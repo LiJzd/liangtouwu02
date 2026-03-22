@@ -1,0 +1,42 @@
+-- 每日简报表
+CREATE TABLE IF NOT EXISTS daily_briefings (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    briefing_date DATE NOT NULL,
+    content TEXT,
+    summary TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 系统用户表
+CREATE TABLE IF NOT EXISTS sys_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(100) NOT NULL,
+    nickname VARCHAR(50),
+    email VARCHAR(100),
+    phone VARCHAR(20),
+    avatar VARCHAR(255),
+    status CHAR(1) DEFAULT '0',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 猪只信息表
+CREATE TABLE IF NOT EXISTS pig_info (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    pig_code VARCHAR(50) NOT NULL UNIQUE,
+    breed VARCHAR(50),
+    age_days INT,
+    weight DECIMAL(10,2),
+    health_status VARCHAR(20),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 告警信息表
+CREATE TABLE IF NOT EXISTS alert_info (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(20),
+    content VARCHAR(255),
+    status VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

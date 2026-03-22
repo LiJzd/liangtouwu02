@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.liangtouwu.business.mapper.EnvironmentTrendMapper">
+    <select id="findRecentTrends" resultType="com.liangtouwu.domain.entity.EnvironmentTrend">
+        SELECT * FROM environment_trend ORDER BY id ASC LIMIT 24
+    </select>
+
+    <select id="findLatestAreaStats" resultType="com.liangtouwu.domain.dto.AreaStats">
+        SELECT area as name, temperature, humidity
+        FROM environment_trend
+        WHERE id IN (
+            SELECT MAX(id)
+            FROM environment_trend
+            GROUP BY area
+        )
+    </select>
+</mapper>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.liangtouwu.business.mapper.PigMapper">
+    <select id="findAbnormalPigs" resultType="com.liangtouwu.domain.entity.Pig">
+        SELECT * FROM pig WHERE score >= 80 OR issue IS NOT NULL
+    </select>
+    
+    <select id="getAverageBodyTemp" resultType="java.lang.Double">
+        SELECT AVG(body_temp) FROM pig
+    </select>
+    
+    <select id="getAverageActivityLevel" resultType="java.lang.Integer">
+        SELECT AVG(activity_level) FROM pig
+    </select>
+</mapper>

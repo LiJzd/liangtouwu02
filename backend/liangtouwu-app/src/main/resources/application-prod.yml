@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/liangtouwu?useSSL=false&serverTimezone=UTC
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: password
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+mybatis:
+  mapper-locations: classpath*:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+server:
+  port: 80
+logging:
+  level:
+    com.liangtouwu: INFO

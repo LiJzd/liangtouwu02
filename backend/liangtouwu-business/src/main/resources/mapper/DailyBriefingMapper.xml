@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.liangtouwu.business.mapper.DailyBriefingMapper">
+
+    <resultMap id="DailyBriefingMap" type="com.liangtouwu.domain.entity.DailyBriefing">
+        <id property="id" column="id"/>
+        <result property="briefingDate" column="briefing_date"/>
+        <result property="content" column="content"/>
+        <result property="summary" column="summary"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.liangtouwu.domain.entity.DailyBriefing" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO daily_briefings (briefing_date, content, summary, created_at)
+        VALUES (#{briefingDate}, #{content}, #{summary}, #{createdAt})
+    </insert>
+
+    <select id="findByDate" resultMap="DailyBriefingMap">
+        SELECT id, briefing_date, content, summary, created_at
+        FROM daily_briefings
+        WHERE briefing_date = #{date}
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="findHistory" resultMap="DailyBriefingMap">
+        SELECT id, briefing_date, content, summary, created_at
+        FROM daily_briefings
+        ORDER BY briefing_date DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

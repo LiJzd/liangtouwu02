@@ -1,0 +1,48 @@
+﻿# FastAPI 核心框架（等效于 spring-boot-starter-web）
+fastapi==0.109.0
+uvicorn[standard]==0.27.0  # ASGI 服务器（等效于 Tomcat）
+
+# 数据校验与配置管理（等效于 Hibernate Validator + @ConfigurationProperties）
+pydantic==2.6.0
+pydantic-settings==2.1.0
+
+# 环境变量管理
+python-dotenv==1.0.0
+
+# 异步 HTTP 客户端（等效于 RestTemplate/WebClient）
+httpx==0.26.0
+
+# 日志增强
+loguru==0.7.2
+
+# YOLO 视觉推理（AI 核心依赖）
+ultralytics==8.1.0
+opencv-python==4.9.0.80
+torch==2.2.0
+torchvision==0.17.0
+Pillow>=10.0.0  # 图像处理
+requests>=2.31.0  # HTTP 请求（用于加载远程图像）
+python-multipart>=0.0.6  # 文件上传支持
+
+# 异步数据库支持（如需算法端持久化）
+sqlalchemy[asyncio]==2.0.25
+aiosqlite==0.19.0
+
+# MySQL 数据库支持
+aiomysql==0.2.0
+pymysql==1.1.0
+
+# 数值引擎依赖（DTW 匹配 + Gompertz 拟合）
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+
+# LLM 调用（阿里百炼 OpenAI 兼容模式）
+openai>=1.0.0
+langchain>=0.2.0
+langchain-openai>=0.1.0
+
+# QQ Bot SDK
+qq-botpy
+
+

@@ -1,0 +1,34 @@
+{
+  "name": "two-end-black-pig",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/marked": "^5.0.2",
+    "@vitejs/plugin-vue": "^6.0.3",
+    "axios": "^1.13.3",
+    "clsx": "^2.1.0",
+    "echarts": "^6.0.0",
+    "lucide-vue-next": "^0.563.0",
+    "marked": "^17.0.4",
+    "tailwind-merge": "^2.2.1",
+    "vue": "^3.5.27",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "autoprefixer": "^10.4.18",
+    "eslint": "^8.56.0",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.9.3",
+    "vite": "^5.1.4"
+  }
+}

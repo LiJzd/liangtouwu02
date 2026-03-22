@@ -1,0 +1,368 @@
+# ==================== IDE ====================
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# ==================== Python ====================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# ==================== Node.js ====================
+# Dependencies
+node_modules/
+jspm_packages/
+
+# Production build
+dist/
+build/
+
+# Testing
+coverage/
+
+# Misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache
+.cache
+.parcel-cache
+
+# Next.js
+.next
+out
+
+# Nuxt.js
+.nuxt
+
+# Gatsby
+.cache/
+public
+
+# vuepress
+.vuepress/dist
+
+# Serverless
+.serverless/
+
+# FuseBox
+.fusebox/
+
+# DynamoDB Local
+.dynamodb/
+
+# TernJS
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# ==================== Java / Maven ====================
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle
+**/build/
+!src/**/build/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# ==================== Logs ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ==================== OS ====================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ==================== Database ====================
+*.db
+*.sqlite
+*.sqlite3
+*chroma_db/
+vector_store/
+data/
+
+# ==================== AI Models ====================
+# Large model files (should use Git LFS or external storage)
+*.pt
+*.pth
+*.onnx
+*.pb
+*.h5
+*.pkl
+*.pickle
+
+# ==================== Videos ====================
+# Large video files (should use Git LFS or external storage)
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.flv
+*.wmv
+
+# ==================== Temporary Files ====================
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.cache/
+tmp/
+temp/
+
+# ==================== Project Specific ====================
+# Python cache
+pip-cache/
+pip-tmp/
+
+# Empty directories
+-p/
+
+# Temporary text files
+user_check.txt
+error_trace.txt
+main_ascii.txt
+
+# Bot logs
+botpy.log*
+
+# Build logs
+*_build*.log
+*_compile*.log
+*_error*.log
+*_debug*.log
+*_effective*.log
+*_deps*.log
+*_startup*.log
+backend_*.log
+app_*.log
+business_*.log
+common_*.log
+domain_*.log
+final_*.log
+full_*.log
+run_*.log
+scan_*.log
+
+# Test files
+hello_test.txt
+all_java_files.txt
+common_files.txt
+
+# Temporary manifests
+TEMPMANINF
+
+# ==================== Environment Variables ====================
+.env
+.env.local
+.env.*.local
+
+# But keep example files
+!.env.example
+!.env.sample
+
+# ==================== Keep These ====================
+# Keep important config files
+!.gitignore
+!.gitattributes
+
+# Keep documentation
+!README.md
+!*.md
+
+# Keep scripts
+!scripts/
+!*.bat
+!*.sh
