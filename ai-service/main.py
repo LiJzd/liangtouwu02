@@ -129,7 +129,7 @@ async def value_error_handler(request: Request, exc: ValueError):
     )
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content=error_response.model_dump()
+        content=error_response.model_dump(mode='json')
     )
 
 # 2. 处理所有未捕获的系统级异常 (兜底方案)
@@ -147,7 +147,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=error_response.model_dump()
+        content=error_response.model_dump(mode='json')
     )
 
 
@@ -211,16 +211,49 @@ try:
 except ImportError as e:
     logger.warning(f"bot_controller import failed: {e}")
 
-# [Central Agent 控制器]
+# [Central Agent 控制器 - V1 单智能体]
 try:
     from v1.logic.central_agent_controller import router as central_agent_router
     app.include_router(
         central_agent_router,
         prefix="/api/v1/agent",
-        tags=["Central Agent"]
+        tags=["Central Agent (V1)"]
     )
 except ImportError as e:
     logger.warning(f"central_agent_controller import failed: {e}")
+
+# [Multi Agent 控制器 - V2 多智能体]
+try:
+    from v1.logic.multi_agent_controller import router as multi_agent_router
+    app.include_router(
+        multi_agent_router,
+        prefix="/api/v1/agent",
+        tags=["Multi Agent (V2)"]
+    )
+except ImportError as e:
+    logger.warning(f"multi_agent_controller import failed: {e}")
+
+# [Agent 调试控制器]
+try:
+    from v1.logic.agent_debug_controller import router as agent_debug_router
+    app.include_router(
+        agent_debug_router,
+        prefix="/api/v1/agent",
+        tags=["Agent Debug"]
+    )
+except ImportError as e:
+    logger.warning(f"agent_debug_controller import failed: {e}")
+
+# [静态文件服务 - 调试网页]
+try:
+    from fastapi.staticfiles import StaticFiles
+    import os
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+        logger.info(f"静态文件服务已挂载: /static -> {static_dir}")
+except Exception as e:
+    logger.warning(f"静态文件服务挂载失败: {e}")
 if __name__ == "__main__":
     import uvicorn
     

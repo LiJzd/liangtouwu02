@@ -176,3 +176,207 @@
 ### 退出登录
 - **操作**: 顶部导航栏用户头像下拉 -> 退出登录
 - **功能**: 清除本地 Token，跳转至登录页。
+
+
+---
+
+## 6. AI Tool API (面向 AI Agent)
+
+**设计原则**：
+- 扁平化 DTO，避免嵌套超过 2 层
+- 精简字段，只返回 AI 需要的核心数据
+- 强制租户隔离，所有接口必须携带 `X-User-ID` Header
+- 清晰的 Swagger 注解，让 LLM 能准确理解参数
+
+**安全机制**：
+- 拦截器强制校验 `X-User-ID` Header
+- Service 层所有查询强制带 `user_id` 过滤
+- 缺失 Header 返回 `401 Unauthorized`
+
+### 6.1 列出猪只列表
+**[需认证]** AI Agent 查询猪场内所有猪只的基础信息。
+
+- **方法**: `POST`
+- **路径**: `/api/v1/ai-tool/pigs/list`
+- **请求头**:
+  ```
+  X-User-ID: user_123
+  Content-Type: application/json
+  ```
+- **请求体**:
+  ```json
+  {
+    "limit": 50,           // Number: 返回数量限制（默认 50）
+    "abnormalOnly": false  // Boolean: 是否只返回异常猪只（默认 false）
+  }
+  ```
+- **成功响应**:
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "total": 12,
+      "pigs": [
+        {
+          "id": "PIG001",
+          "breed": "金华两头乌",
+          "currentWeight": 45.5,
+          "dayAge": 120,
+          "healthScore": 85,
+          "issue": "体温偏高"
+        }
+      ]
+    }
+  }
+  ```
+
+### 6.2 查询猪只详细档案
+**[需认证]** AI Agent 查询指定猪只的完整档案信息。
+
+- **方法**: `POST`
+- **路径**: `/api/v1/ai-tool/pigs/info`
+- **请求头**:
+  ```
+  X-User-ID: user_123
+  Content-Type: application/json
+  ```
+- **请求体**:
+  ```json
+  {
+    "pigId": "PIG001",          // String: 猪只 ID（必填）
+    "includeLifecycle": true    // Boolean: 是否包含生长周期数据（默认 true）
+  }
+  ```
+- **成功响应**:
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "id": "PIG001",
+      "breed": "金华两头乌",
+      "currentWeight": 45.5,
+      "dayAge": 120,
+      "currentMonth": 4,
+      "healthScore": 85,
+      "issue": "体温偏高",
+      "bodyTemp": 39.2,
+      "activityLevel": 75,
+      "lifecycle": [
+        {"month": 1, "weight": 5.2, "dayAge": 30},
+        {"month": 2, "weight": 12.8, "dayAge": 60},
+        {"month": 3, "weight": 28.5, "dayAge": 90},
+        {"month": 4, "weight": 45.5, "dayAge": 120}
+      ]
+    }
+  }
+  ```
+
+### 6.3 查询异常猪只列表
+**[需认证]** AI Agent 快速定位需要关注的异常个体。
+
+- **方法**: `POST`
+- **路径**: `/api/v1/ai-tool/pigs/abnormal`
+- **请求头**:
+  ```
+  X-User-ID: user_123
+  Content-Type: application/json
+  ```
+- **请求体**:
+  ```json
+  {
+    "threshold": 60,  // Number: 健康评分阈值（默认 60）
+    "limit": 20       // Number: 返回数量限制（默认 20）
+  }
+  ```
+- **成功响应**:
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "count": 3,
+      "pigs": [
+        {
+          "id": "PIG005",
+          "healthScore": 75,
+          "issue": "体温偏高",
+          "bodyTemp": 39.8,
+          "activityLevel": 45,
+          "dayAge": 90
+        }
+      ]
+    }
+  }
+  ```
+
+### 6.4 获取猪场统计概览
+**[需认证]** AI Agent 快速了解猪场整体状况。
+
+- **方法**: `POST`
+- **路径**: `/api/v1/ai-tool/farm/stats`
+- **请求头**:
+  ```
+  X-User-ID: user_123
+  Content-Type: application/json
+  ```
+- **请求体**:
+  ```json
+  {}  // 空对象即可
+  ```
+- **成功响应**:
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "totalPigs": 120,
+      "abnormalCount": 5,
+      "avgHealthScore": 82,
+      "avgBodyTemp": 38.5,
+      "avgActivityLevel": 75,
+      "todayNewAbnormal": 2
+    }
+  }
+  ```
+
+### 6.5 安全说明
+
+**租户隔离机制**：
+1. 所有 AI Tool API 路径（`/api/v1/ai-tool/**`）必须携带 `X-User-ID` Header
+2. 拦截器在请求到达 Controller 前强制校验 Header
+3. Service 层所有 SQL 查询强制带 `user_id = #{userId}` 条件
+4. 缺失 Header 返回 `401 Unauthorized`
+
+**防止提示词注入越权**：
+- AI Agent 无法通过修改 `pigId` 参数访问其他用户的数据
+- 所有查询都在 SQL 层面强制过滤 `user_id`
+- 即使 AI 被注入恶意提示词，也无法绕过租户隔离
+
+**测试脚本**：
+```bash
+# 测试正常请求
+curl -X POST "http://localhost:8080/api/v1/ai-tool/pigs/list" \
+  -H "X-User-ID: demo_user_001" \
+  -H "Content-Type: application/json" \
+  -d '{"limit": 10}'
+
+# 测试缺少 Header（应返回 401）
+curl -X POST "http://localhost:8080/api/v1/ai-tool/pigs/list" \
+  -H "Content-Type: application/json" \
+  -d '{"limit": 10}'
+```
+
+---
+
+## 附录：错误码说明
+
+| 错误码 | 说明 |
+|-------|------|
+| 200 | 成功 |
+| 400 | 请求参数错误 |
+| 401 | 未授权（Token 失效或缺失 X-User-ID） |
+| 403 | 无权限访问 |
+| 404 | 资源不存在 |
+| 500 | 服务器内部错误 |

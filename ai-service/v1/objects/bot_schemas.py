@@ -13,6 +13,7 @@ class BotHandleRequest(BaseModel):
 
 class BotHandleResponse(BaseModel):
     reply: str
+    image: Optional[str] = Field(None, description="Base64 编码的图片（可选）")
 
 
 class OutboxItem(BaseModel):

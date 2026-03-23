@@ -18,3 +18,5 @@ class AgentChatRequest(BaseModel):
 
 class AgentChatResponse(BaseModel):
     reply: str
+    image: Optional[str] = Field(None, description="Base64 编码的图片（可选）")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="额外的元数据")

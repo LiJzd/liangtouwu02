@@ -12,4 +12,48 @@
     <select id="getAverageActivityLevel" resultType="java.lang.Integer">
         SELECT AVG(activity_level) FROM pig
     </select>
+    
+    <!-- ========== AI Tool 专用查询（租户隔离） ========== -->
+    
+    <select id="findByUserId" resultType="com.liangtouwu.domain.entity.Pig">
+        SELECT * FROM pig 
+        WHERE user_id = #{userId}
+        ORDER BY score DESC
+        LIMIT #{limit}
+    </select>
+    
+    <select id="findByIdAndUserId" resultType="com.liangtouwu.domain.entity.Pig">
+        SELECT * FROM pig 
+        WHERE id = #{pigId} AND user_id = #{userId}
+    </select>
+    
+    <select id="findAbnormalByUserId" resultType="com.liangtouwu.domain.entity.Pig">
+        SELECT * FROM pig 
+        WHERE user_id = #{userId} 
+          AND (score >= #{threshold} OR issue IS NOT NULL)
+        ORDER BY score DESC
+        LIMIT #{limit}
+    </select>
+    
+    <select id="countByUserId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM pig WHERE user_id = #{userId}
+    </select>
+    
+    <select id="countAbnormalByUserId" resultType="java.lang.Integer">
+        SELECT COUNT(*) FROM pig 
+        WHERE user_id = #{userId} 
+          AND (score >= #{threshold} OR issue IS NOT NULL)
+    </select>
+    
+    <select id="getAvgBodyTempByUserId" resultType="java.lang.Double">
+        SELECT AVG(body_temp) FROM pig WHERE user_id = #{userId}
+    </select>
+    
+    <select id="getAvgActivityLevelByUserId" resultType="java.lang.Integer">
+        SELECT AVG(activity_level) FROM pig WHERE user_id = #{userId}
+    </select>
+    
+    <select id="getAvgHealthScoreByUserId" resultType="java.lang.Integer">
+        SELECT AVG(score) FROM pig WHERE user_id = #{userId}
+    </select>
 </mapper>

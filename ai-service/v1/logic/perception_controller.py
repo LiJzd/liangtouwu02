@@ -385,8 +385,12 @@ def generate_frames(video_path: str):
     3. 使用 cv2.rectangle 在内存中绘制识别框和标签。
     4. 将结果帧编码为 JPEG 字节流，并按 MJPEG 标准协议产出。
     """
-    # 设置 OpenCV 日志级别为 ERROR，抑制警告
-    cv2.setLogLevel(0)
+    # 设置 OpenCV 日志级别（兼容不同版本）
+    try:
+        cv2.setLogLevel(0)
+    except AttributeError:
+        # OpenCV 4.x 以下版本不支持 setLogLevel
+        pass
     
     cap = None
     try:

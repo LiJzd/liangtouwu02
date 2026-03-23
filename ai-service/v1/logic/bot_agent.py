@@ -47,7 +47,8 @@ _HELP_KEYWORDS = {
 
 _SYSTEM_PROMPT = (
     "# Role (角色设定)\n"
-    "你是'掌上明猪'智慧农业监测系统的'首席数字兽医'与'贴身养殖管家'。你的核心任务是全天候(7x24小时)为基层生猪养殖户提供精准、保姆式的指导，彻底解决由于夜间人工巡检真空以及基层兽医经验不足带来的疫病滞后风险。\n\n"
+    "你是'掌上明猪'智慧农业监测系统的'首席数字兽医'与'贴身养殖管家'。,你的名字叫做韦俊旗"
+    "你的核心任务是全天候(7x24小时)为基层生猪养殖户提供精准、保姆式的指导，彻底解决由于夜间人工巡检真空以及基层兽医经验不足带来的疫病滞后风险。\n\n"
     "# Audience Context (用户画像与语境)\n"
     "请时刻牢记你面对的用户群体特征：\n"
     "1. 你的服务对象主要是农民出身的养殖户，普遍年龄偏高，文化水平多数在初中及以下。\n"
@@ -65,7 +66,7 @@ _SYSTEM_PROMPT = (
     "1. 极度通俗化\n"
     "2. 使用表情符号分段\n"
     "3. 高风险类传染病提示联系畜牧局\n"
-    "4. 称呼用'老乡/师傅'，避免使用'老亲'\n"
+    "4. 称呼用'老乡/师傅'\n"
     "5. 回复尽量短：1-3句，必要时最多5句，每句不超过20字\n"
     "6. 未提到养殖/猪/猪场时，按普通聊天简短回复，不要强行引导养殖\n"
     "7. 用户问'能做什么/功能/工具列表'，先调用 list_tools，再简短总结3\n"
@@ -183,28 +184,54 @@ def _fallback_reply(text: str) -> str:
     return "系统繁忙，请再说一遍。"
 
 
-async def _call_central_agent(qq_user_id: str, messages: list[dict]) -> Optional[str]:
+async def _call_central_agent(qq_user_id: str, messages: list[dict]) -> tuple[Optional[str], Optional[str]]:
+    """
+    调用中央智能体
+    
+    Returns:
+        tuple[reply_text, image_base64]: (回复文本, 图片base64)
+    """
     settings = get_settings()
     if not settings.central_agent_url:
-        return None
+        return None, None
+    
     headers = {"Content-Type": "application/json"}
     if settings.central_agent_api_key:
         headers["Authorization"] = f"Bearer {settings.central_agent_api_key}"
+    
     payload = {
         "user_id": qq_user_id,
         "messages": messages,
         "metadata": {"channel": "c2c", "source": "qq_bot"},
     }
+    
     try:
         async with httpx.AsyncClient(timeout=settings.central_agent_timeout_seconds) as client:
+            # 优先使用 V2 多智能体接口
+            v2_url = settings.central_agent_url.replace("/chat", "/chat/v2")
+            try:
+                resp = await client.post(v2_url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    reply = data.get("reply")
+                    image = data.get("image")
+                    reply_text = reply if isinstance(reply, str) and reply.strip() else None
+                    return reply_text, image
+            except Exception:
+                # V2 失败，降级到 V1
+                pass
+            
+            # 降级到 V1 单智能体接口
             resp = await client.post(settings.central_agent_url, json=payload, headers=headers)
+        
         if resp.status_code != 200:
-            return None
+            return None, None
         data = resp.json()
         reply = data.get("reply")
-        return reply if isinstance(reply, str) and reply.strip() else None
+        reply_text = reply if isinstance(reply, str) and reply.strip() else None
+        return reply_text, None
     except Exception:
-        return None
+        return None, None
 
 
 def _is_danger(text: str) -> bool:
@@ -246,7 +273,7 @@ def _strip_canned_prefix(text: str) -> str:
         return ""
     canned = [
         "掌上明猪",
-        "猪BOOT",
+        "猪BOT",
         "开机成功",
         "数字兽医",
         "养猪的管家",
@@ -285,9 +312,27 @@ def _shorten_reply(text: str, max_lines: int = 3, max_sentences: int = 3, max_ch
 
 
 def _postprocess_reply(text: str) -> str:
+    """
+    后处理 Agent 回复：
+    1. 移除固定开场白
+    2. 严格提取 Final Answer（防止思考链污染）
+    3. 压缩长度
+    """
     text = (text or "").strip()
     if not text:
         return "我在，想聊什么？"
+    
+    # 【关键】如果回复中包含 ReAct 格式标记，强制提取 Final Answer
+    if any(marker in text for marker in ["Thought:", "Action:", "Observation:", "Question:"]):
+        import re
+        match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            text = match.group(1).strip()
+        else:
+            # 如果没有 Final Answer 但有思考过程，说明格式错误，返回兜底
+            logger.warning(f"检测到思考链污染，原始回复: {text[:200]}")
+            return "系统繁忙，请再说一遍。"
+    
     text = _strip_canned_prefix(text)
     text = _shorten_reply(text)
     return text
@@ -306,12 +351,18 @@ async def _handle_message_locked(
     qq_user_id: str,
     message: str,
     guild_id: Optional[str],
-) -> str:
+) -> tuple[str, Optional[str]]:
+    """
+    处理消息
+    
+    Returns:
+        tuple[reply_text, image_base64]: (回复文本, 图片base64)
+    """
     await ensure_user(session, qq_user_id=qq_user_id, guild_id=guild_id)
     text = message.strip()
 
     if not text:
-        return "请发送有效内容。"
+        return "请发送有效内容。", None
 
     settings = get_settings()
     history = await _get_history(session, qq_user_id, settings.central_agent_max_history)
@@ -319,23 +370,36 @@ async def _handle_message_locked(
     messages = _build_messages(system_prompt, history, text)
 
     reply = None
+    image = None
     try:
-        reply = await asyncio.wait_for(
+        reply, image = await asyncio.wait_for(
             _call_central_agent(qq_user_id, messages),
             timeout=settings.central_agent_timeout_seconds,
         )
     except asyncio.TimeoutError:
         reply = None
+        image = None
     if not reply:
         reply = _fallback_reply(text)
     reply = _postprocess_reply(reply)
 
     await _save_turn(session, qq_user_id, "user", text)
     await _save_turn(session, qq_user_id, "assistant", reply)
-    return reply
+    return reply, image
 
 
-async def handle_message(session: AsyncSession, qq_user_id: str, message: str, guild_id: Optional[str] = None) -> str:
+async def handle_message(
+    session: AsyncSession, 
+    qq_user_id: str, 
+    message: str, 
+    guild_id: Optional[str] = None
+) -> tuple[str, Optional[str]]:
+    """
+    处理消息（带锁）
+    
+    Returns:
+        tuple[reply_text, image_base64]: (回复文本, 图片base64)
+    """
     lock = _get_user_lock(qq_user_id)
     async with lock:
         return await _handle_message_locked(session, qq_user_id, message, guild_id)

@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Agent 调试控制台 - 掌上明猪</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(31, 111, 235, 0.3);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #238636;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+
+        .btn-danger {
+            background: #da3633;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #f85149;
+        }
+
+        .btn-secondary {
+            background: #21262d;
+            color: #c9d1d9;
+            border: 1px solid #30363d;
+        }
+
+        .btn-secondary:hover {
+            background: #30363d;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status.connected {
+            background: #238636;
+            color: white;
+        }
+
+        .status.disconnected {
+            background: #da3633;
+            color: white;
+        }
+
+        #events {
+            max-height: calc(100vh - 250px);
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        #events::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #events::-webkit-scrollbar-track {
+            background: #161b22;
+            border-radius: 4px;
+        }
+
+        #events::-webkit-scrollbar-thumb {
+            background: #30363d;
+            border-radius: 4px;
+        }
+
+        #events::-webkit-scrollbar-thumb:hover {
+            background: #484f58;
+        }
+
+        .event {
+            margin-bottom: 12px;
+            padding: 16px;
+            border-left: 4px solid;
+            background: #161b22;
+            border-radius: 6px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .event.thought {
+            border-color: #ffa657;
+            background: linear-gradient(90deg, rgba(255, 166, 87, 0.1) 0%, #161b22 100%);
+        }
+
+        .event.action {
+            border-color: #58a6ff;
+            background: linear-gradient(90deg, rgba(88, 166, 255, 0.1) 0%, #161b22 100%);
+        }
+
+        .event.observation {
+            border-color: #a371f7;
+            background: linear-gradient(90deg, rgba(163, 113, 247, 0.1) 0%, #161b22 100%);
+        }
+
+        .event.final_answer {
+            border-color: #3fb950;
+            background: linear-gradient(90deg, rgba(63, 185, 80, 0.1) 0%, #161b22 100%);
+        }
+
+        .event.error {
+            border-color: #f85149;
+            background: linear-gradient(90deg, rgba(248, 81, 73, 0.1) 0%, #161b22 100%);
+        }
+
+        .event.connected, .event.heartbeat {
+            border-color: #6e7681;
+            background: #0d1117;
+            opacity: 0.7;
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .event-time {
+            font-size: 12px;
+            color: #8b949e;
+        }
+
+        .event-content {
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .event-content code {
+            background: #0d1117;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #8b949e;
+        }
+
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 Agent 调试控制台</h1>
+        <p>实时追踪智能体内部推理过程 | 掌上明猪 AI 服务</p>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" id="connectBtn">🔌 连接</button>
+        <button class="btn btn-danger" id="disconnectBtn" disabled>🔌 断开</button>
+        <button class="btn btn-secondary" id="clearBtn">🗑️ 清空</button>
+        <span class="status disconnected" id="statusBadge">未连接</span>
+    </div>
+
+    <div id="events">
+        <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+            </svg>
+            <p>等待 Agent 事件...</p>
+            <p style="font-size: 12px; margin-top: 8px;">点击"连接"按钮开始监听</p>
+        </div>
+    </div>
+
+    <script>
+        let evtSource = null;
+        const eventsContainer = document.getElementById('events');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statusBadge = document.getElementById('statusBadge');
+
+        const clientId = 'debug_' + Date.now();
+
+        function connect() {
+            if (evtSource) {
+                return;
+            }
+
+            evtSource = new EventSource(`/api/v1/agent/debug/agent-trace?client_id=${clientId}`);
+            
+            evtSource.onopen = () => {
+                updateStatus(true);
+            };
+
+            evtSource.onmessage = (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    addEvent(event);
+                } catch (err) {
+                    console.error('解析事件失败:', err);
+                }
+            };
+
+            evtSource.onerror = () => {
+                updateStatus(false);
+                evtSource.close();
+                evtSource = null;
+            };
+        }
+
+        function disconnect() {
+            if (evtSource) {
+                evtSource.close();
+                evtSource = null;
+                updateStatus(false);
+            }
+        }
+
+        function updateStatus(connected) {
+            if (connected) {
+                statusBadge.textContent = '已连接';
+                statusBadge.className = 'status connected';
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+            } else {
+                statusBadge.textContent = '未连接';
+                statusBadge.className = 'status disconnected';
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+            }
+        }
+
+        function addEvent(event) {
+            // 移除空状态提示
+            const emptyState = eventsContainer.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const div = document.createElement('div');
+            div.className = `event ${event.type}`;
+
+            const time = new Date(event.timestamp).toLocaleTimeString('zh-CN', { hour12: false });
+            
+            let content = '';
+            if (typeof event.data === 'object') {
+                content = JSON.stringify(event.data, null, 2);
+            } else {
+                content = String(event.data);
+            }
+
+            const emoji = {
+                'thought': '💭',
+                'action': '🤖',
+                'observation': '👁️',
+                'final_answer': '✨',
+                'error': '❌',
+                'connected': '🔗',
+                'heartbeat': '💓'
+            }[event.type] || '📝';
+
+            div.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${emoji} ${event.type}</span>
+                    <span class="event-time">${time}</span>
+                </div>
+                <div class="event-content">${escapeHtml(content)}</div>
+            `;
+
+            eventsContainer.insertBefore(div, eventsContainer.firstChild);
+
+            // 限制最多显示 100 条
+            const events = eventsContainer.querySelectorAll('.event');
+            if (events.length > 100) {
+                events[events.length - 1].remove();
+            }
+        }
+
+        function clearEvents() {
+            eventsContainer.innerHTML = `
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                    <p>等待 Agent 事件...</p>
+                </div>
+            `;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        connectBtn.addEventListener('click', connect);
+        disconnectBtn.addEventListener('click', disconnect);
+        clearBtn.addEventListener('click', clearEvents);
+
+        // 页面加载时自动连接
+        window.addEventListener('load', () => {
+            setTimeout(connect, 500);
+        });
+
+        // 页面卸载时断开连接
+        window.addEventListener('beforeunload', disconnect);
+    </script>
+</body>
+</html>

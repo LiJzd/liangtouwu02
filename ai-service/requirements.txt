@@ -14,6 +14,7 @@ httpx==0.26.0
 
 # 日志增强
 loguru==0.7.2
+rich==13.7.0  # 控制台美化与 Agent 追踪
 
 # YOLO 视觉推理（AI 核心依赖）
 ultralytics==8.1.0
@@ -39,8 +40,9 @@ scipy>=1.11.0
 
 # LLM 调用（阿里百炼 OpenAI 兼容模式）
 openai>=1.0.0
-langchain>=0.2.0
-langchain-openai>=0.1.0
+langchain==0.2.16
+langchain-openai==0.1.25
+langchain-core==0.2.38
 
 # QQ Bot SDK
 qq-botpy

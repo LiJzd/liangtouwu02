@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import threading
 from typing import List, Optional, Tuple
 
 from v1.common.config import get_settings
 
 logger = logging.getLogger("central_agent")
+
+# Rich 控制台美化
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    HAS_RICH = True
+    console = Console()
+except Exception:
+    HAS_RICH = False
+    console = None
 
 try:
     from openai import OpenAI
@@ -68,15 +81,103 @@ Question: {input}
 Thought: {agent_scratchpad}"""
 
 
-class ConsoleToolTraceHandler(BaseCallbackHandler):
-    """Print tool execution steps to stdout (no chain-of-thought)."""
+class RichTraceHandler(BaseCallbackHandler):
+    """使用 Rich 库高亮显示 Agent 内部状态（思考过程不污染最终输出）"""
+
+    def __init__(self, client_id: str = "default"):
+        super().__init__()
+        self.client_id = client_id
+
+    def on_agent_action(self, action, **kwargs):  # type: ignore[override]
+        """Agent 决策时触发"""
+        tool_name = getattr(action, "tool", "unknown")
+        tool_input = getattr(action, "tool_input", "")
+        
+        # 推送到 SSE 调试流
+        asyncio.create_task(self._push_event("action", {
+            "tool": tool_name,
+            "input": str(tool_input)
+        }))
+        
+        if not HAS_RICH or not console:
+            return
+        
+        content = Text()
+        content.append("🤖 Action: ", style="bold cyan")
+        content.append(f"{tool_name}\n", style="cyan")
+        content.append("📝 Input: ", style="bold yellow")
+        content.append(str(tool_input), style="yellow")
+        
+        console.print(Panel(
+            content,
+            title="[bold magenta]Agent 决策[/]",
+            border_style="magenta",
+            expand=False
+        ))
 
     def on_tool_start(self, serialized, input_str, **kwargs):  # type: ignore[override]
+        """工具开始执行时触发"""
+        if not HAS_RICH or not console:
+            name = (serialized or {}).get("name", "tool")
+            print(f"[{_ZH_AGENT}][{_ZH_TOOL_START}] {name} {_ZH_INPUT}={input_str}")
+            return
+        
         name = (serialized or {}).get("name", "tool")
-        print(f"[{_ZH_AGENT}][{_ZH_TOOL_START}] {name} {_ZH_INPUT}={input_str}")
+        console.print(f"[bold blue]🔧 工具启动:[/] {name}", style="blue")
 
     def on_tool_end(self, output, **kwargs):  # type: ignore[override]
-        print(f"[{_ZH_AGENT}][{_ZH_TOOL_END}] {_ZH_OUTPUT}={output}")
+        """工具执行完成时触发"""
+        # 推送到 SSE 调试流
+        asyncio.create_task(self._push_event("observation", {
+            "output": str(output)[:500]  # 限制长度
+        }))
+        
+        if not HAS_RICH or not console:
+            print(f"[{_ZH_AGENT}][{_ZH_TOOL_END}] {_ZH_OUTPUT}={output}")
+            return
+        
+        # 截断过长输出
+        output_str = str(output)
+        if len(output_str) > 300:
+            output_str = output_str[:300] + "..."
+        
+        content = Text()
+        content.append("✅ Output: ", style="bold green")
+        content.append(output_str, style="green")
+        
+        console.print(Panel(
+            content,
+            title="[bold green]工具返回[/]",
+            border_style="green",
+            expand=False
+        ))
+
+    def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
+        """Agent 完成推理时触发"""
+        output = getattr(finish, "return_values", {}).get("output", "")
+        
+        # 推送到 SSE 调试流
+        asyncio.create_task(self._push_event("final_answer", {
+            "answer": str(output)
+        }))
+        
+        if not HAS_RICH or not console:
+            return
+        
+        console.print(Panel(
+            Text(str(output), style="bold white"),
+            title="[bold green]✨ Final Answer[/]",
+            border_style="green",
+            expand=False
+        ))
+
+    async def _push_event(self, event_type: str, data: dict):
+        """推送事件到调试流"""
+        try:
+            from v1.logic.agent_debug_controller import push_debug_event
+            await push_debug_event(event_type, data, self.client_id)
+        except Exception:
+            pass  # 调试流失败不影响主流程
 
 
 def _get_llm_config() -> Tuple[str, str, str]:
@@ -236,11 +337,42 @@ def _extract_tool_error(observation: str) -> Optional[str]:
     return None
 
 
+def _extract_final_answer(agent_output: str) -> str:
+    """
+    从 Agent 输出中提取 Final Answer，严格隔离思考过程。
+    这是防止"思考链污染"的核心函数。
+    """
+    if not agent_output:
+        return ""
+    
+    # 正则匹配 "Final Answer: xxx"
+    match = re.search(r"Final Answer:\s*(.+)", agent_output, re.DOTALL | re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    
+    # 如果没有 Final Answer 标记，说明 Agent 格式错误
+    logger.warning(f"Agent 输出缺少 Final Answer 标记，原始输出: {agent_output[:200]}")
+    
+    # 尝试提取最后一段非空文本作为兜底
+    lines = [line.strip() for line in agent_output.split('\n') if line.strip()]
+    if lines:
+        # 过滤掉明显的思考过程标记
+        filtered = [
+            line for line in lines 
+            if not any(marker in line for marker in ["Thought:", "Action:", "Observation:", "Question:"])
+        ]
+        if filtered:
+            return filtered[-1]
+    
+    return agent_output.strip()
+
+
 def _run_agent_once(
     system_prompt: str,
     chat_history: list,
     user_input: str,
     force_tool: bool = False,
+    client_id: str = "default",
 ) -> tuple[Optional[str], list[str], list[str]]:
     """Run ReAct agent once and return output + intermediate steps + thoughts."""
     api_key, base_url, model = _get_llm_config()
@@ -262,14 +394,16 @@ def _run_agent_once(
     # 创建ReAct Agent
     agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
     
-    # 创建Agent Executor（带详细日志）
+    # 创建Agent Executor（带 Rich 追踪）
+    callbacks = [RichTraceHandler(client_id=client_id)] if HAS_RICH else []
     agent_executor = AgentExecutor(
         agent=agent,
         tools=tools,
-        verbose=True,  # 启用详细日志，显示思考过程
-        handle_parsing_errors=True,  # 处理解析错误
-        max_iterations=5,  # 最大迭代次数
-        return_intermediate_steps=True,  # 返回中间步骤
+        verbose=False,  # 关闭 LangChain 自带的冗长日志，使用 Rich 替代
+        handle_parsing_errors=True,
+        max_iterations=5,
+        return_intermediate_steps=True,
+        callbacks=callbacks,
     )
     
     # 构建输入（包含历史对话和系统指令）
@@ -288,10 +422,13 @@ def _run_agent_once(
     try:
         result = agent_executor.invoke({"input": input_text})
         
-        # 提取输出
-        output = result.get("output", "")
+        # 提取原始输出
+        raw_output = result.get("output", "")
         
-        # 提取中间步骤
+        # 【关键】严格提取 Final Answer，丢弃所有思考过程
+        clean_output = _extract_final_answer(raw_output)
+        
+        # 提取中间步骤（仅用于日志和调试）
         intermediate_steps = result.get("intermediate_steps", [])
         tool_outputs = []
         thoughts = []
@@ -299,7 +436,6 @@ def _run_agent_once(
         for step in intermediate_steps:
             if len(step) >= 2:
                 action, observation = step[0], step[1]
-                # 记录工具调用
                 tool_name = getattr(action, "tool", "unknown")
                 tool_input = getattr(action, "tool_input", "")
                 thoughts.append(f"Action: {tool_name}")
@@ -307,56 +443,84 @@ def _run_agent_once(
                 tool_outputs.append(str(observation))
                 thoughts.append(f"Observation: {observation}")
         
-        return (output.strip() if output else None, tool_outputs, thoughts)
+        return (clean_output if clean_output else None, tool_outputs, thoughts)
         
     except Exception as e:
         logger.error(f"ReAct Agent执行失败: {str(e)}", exc_info=True)
+        # 推送错误事件
+        asyncio.create_task(_push_error_event(str(e), client_id))
         return (None, [], [f"Error: {str(e)}"])
 
 
-def _call_agent(messages: List[dict]) -> Optional[str]:
+async def _push_error_event(error: str, client_id: str):
+    """推送错误事件到调试流"""
+    try:
+        from v1.logic.agent_debug_controller import push_debug_event
+        await push_debug_event("error", {"message": error}, client_id)
+    except Exception:
+        pass
+
+
+def _call_agent(messages: List[dict], client_id: str = "default") -> Optional[str]:
     """Use LangChain ReAct Agent with tool calling."""
     if not HAS_LANGCHAIN:
-        logger.warning("LangChain \u672a\u5b89\u88c5\uff0c\u667a\u80fd\u4f53\u5df2\u7981\u7528\u3002")
-        print(f"[{_ZH_AGENT}] LangChain \u672a\u5b89\u88c5\uff0c\u5df2\u7981\u7528\u667a\u80fd\u4f53\u3002")
+        logger.warning("LangChain 未安装，智能体已禁用。")
+        if HAS_RICH and console:
+            console.print("[bold red]⚠️  LangChain 未安装，智能体已禁用[/]")
+        else:
+            print(f"[{_ZH_AGENT}] LangChain 未安装，已禁用智能体。")
         return None
 
     api_key, base_url, model = _get_llm_config()
     if not api_key:
-        logger.warning("\u7f3a\u5c11 DASHSCOPE_API_KEY\uff0c\u667a\u80fd\u4f53\u5df2\u7981\u7528\u3002")
-        print(f"[{_ZH_AGENT}] \u7f3a\u5c11 DASHSCOPE_API_KEY\uff0c\u5df2\u7981\u7528\u667a\u80fd\u4f53\u3002")
+        logger.warning("缺少 DASHSCOPE_API_KEY，智能体已禁用。")
+        if HAS_RICH and console:
+            console.print("[bold red]⚠️  缺少 DASHSCOPE_API_KEY，智能体已禁用[/]")
+        else:
+            print(f"[{_ZH_AGENT}] 缺少 DASHSCOPE_API_KEY，已禁用智能体。")
         return None
 
     system_prompt, chat_history, user_input = _split_messages(messages)
     if not user_input:
         return None
 
-    print(f"\n[{_ZH_AGENT}] ========== ReAct 推理开始 ==========")
-    output, tool_outputs, thoughts = _run_agent_once(system_prompt, chat_history, user_input, force_tool=False)
+    # Rich 美化的开始标记
+    if HAS_RICH and console:
+        console.print("\n" + "="*60, style="bold blue")
+        console.print("🚀 ReAct 推理引擎启动", style="bold blue", justify="center")
+        console.print("="*60 + "\n", style="bold blue")
+        console.print(Panel(
+            Text(user_input, style="white"),
+            title="[bold cyan]用户问题[/]",
+            border_style="cyan"
+        ))
+    else:
+        print(f"\n[{_ZH_AGENT}] ========== ReAct 推理开始 ==========")
 
-    # 打印思考过程
+    output, tool_outputs, thoughts = _run_agent_once(system_prompt, chat_history, user_input, force_tool=False, client_id=client_id)
+
+    # 【关键】思考过程仅记录到日志，不返回给用户
     if thoughts:
-        print(f"[{_ZH_AGENT}] 思考过程:")
-        for thought in thoughts:
-            print(f"  {thought}")
+        logger.debug(f"Agent 思考过程: {thoughts}")
 
     # If tool is required but none used, retry with hard requirement.
     if _requires_tool(user_input) and not tool_outputs:
-        print(f"[{_ZH_AGENT}] 需要工具但未触发，已强制重试调用工具。")
-        output, tool_outputs, thoughts = _run_agent_once(system_prompt, chat_history, user_input, force_tool=True)
+        if HAS_RICH and console:
+            console.print("[bold yellow]⚠️  需要工具但未触发，强制重试[/]")
+        else:
+            print(f"[{_ZH_AGENT}] 需要工具但未触发，已强制重试调用工具。")
+        
+        output, tool_outputs, thoughts = _run_agent_once(system_prompt, chat_history, user_input, force_tool=True, client_id=client_id)
         
         if thoughts:
-            print(f"[{_ZH_AGENT}] 重试思考过程:")
-            for thought in thoughts:
-                print(f"  {thought}")
+            logger.debug(f"Agent 重试思考过程: {thoughts}")
 
     if _requires_tool(user_input) and not tool_outputs:
-        print(f"[{_ZH_AGENT}] 仍未触发工具，返回提示信息。")
-        return (
-            "需要调用工具才能回答，"
-            "但未成功触发工具。"
-            "请稍后再试。"
-        )
+        if HAS_RICH and console:
+            console.print("[bold red]❌ 仍未触发工具[/]")
+        else:
+            print(f"[{_ZH_AGENT}] 仍未触发工具，返回提示信息。")
+        return "需要调用工具才能回答，但未成功触发工具。请稍后再试。"
 
     # If tool output contains error, surface it directly to avoid hallucination.
     for observation in tool_outputs:
@@ -364,7 +528,14 @@ def _call_agent(messages: List[dict]) -> Optional[str]:
         if err:
             return f"工具调用失败：{err}"
 
-    print(f"[{_ZH_AGENT}] ========== ReAct 推理结束 ==========\n")
+    # Rich 美化的结束标记
+    if HAS_RICH and console:
+        console.print("\n" + "="*60, style="bold green")
+        console.print("✅ ReAct 推理完成", style="bold green", justify="center")
+        console.print("="*60 + "\n", style="bold green")
+    else:
+        print(f"[{_ZH_AGENT}] ========== ReAct 推理结束 ==========\n")
+    
     return output
 
 
@@ -397,9 +568,9 @@ def _fallback_reply() -> str:
     return "\u7cfb\u7edf\u7e41\u5fd9\uff0c\u60a8\u5148\u8bf4\u60c5\u51b5\uff0c\u6211\u9a6c\u4e0a\u56de\u590d\u3002"
 
 
-def generate_reply(messages: List[dict]) -> str:
+def generate_reply(messages: List[dict], client_id: str = "default") -> str:
     """Main entry: try agent first, then fallback LLM."""
-    agent_reply = _call_agent(messages)
+    agent_reply = _call_agent(messages, client_id=client_id)
     if agent_reply:
         return agent_reply
     llm_reply = _call_llm(messages)

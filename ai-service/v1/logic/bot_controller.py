@@ -23,8 +23,8 @@ router = APIRouter()
 
 @router.post("/handle", response_model=BotHandleResponse)
 async def handle_message_api(payload: BotHandleRequest, session: AsyncSession = Depends(get_session)):
-    reply = await handle_message(session, payload.qq_user_id, payload.message, payload.guild_id)
-    return BotHandleResponse(reply=reply)
+    reply, image = await handle_message(session, payload.qq_user_id, payload.message, payload.guild_id)
+    return BotHandleResponse(reply=reply, image=image)
 
 
 @router.get("/outbox/pending", response_model=OutboxPendingResponse)

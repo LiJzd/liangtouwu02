@@ -35,6 +35,12 @@ public class Pig {
     private String id;
 
     /**
+     * 所属用户 ID（租户隔离字段）
+     * 用于多租户环境下的数据隔离
+     */
+    private String userId;
+
+    /**
      * 综合健康/风险评分
      * 范围：0 (健康) - 100 (极度危险)。
      * 该评分通常由 AI 结合历史体温、活动量及 RAG 知识库计算得出。
