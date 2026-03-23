@@ -284,54 +284,7 @@ class WorkerAgent(ABC):
             # 获取工具
             tools = self.get_tools()
             
-            # 简化方案：对于只有一个工具的情况，直接调用
-            if len(tools) == 1:
-                try:
-                    tool = tools[0]
-                    logger.info(f"直接调用工具: {tool.name}")
-                    
-                    # 调用工具
-                    observation = tool.func({})
-                    logger.info(f"工具返回: {observation}")
-                    
-                    # 解析工具输出
-                    import json
-                    obs_data = json.loads(str(observation))
-                    summary = obs_data.get("summary", "处理完成")
-                    image_key = obs_data.get("image_key")
-                    
-                    # 从缓存获取图片
-                    image_base64 = None
-                    if image_key:
-                        from v1.logic.bot_tools import get_cached_image
-                        image_base64 = get_cached_image(image_key)
-                        if image_base64:
-                            logger.info(f"成功获取图片，长度: {len(image_base64)}")
-                        else:
-                            logger.warning(f"缓存中未找到图片: {image_key}")
-                    
-                    # 使用 LLM 生成友好的回复
-                    from langchain_core.messages import HumanMessage, SystemMessage
-                    messages = [
-                        SystemMessage(content=self.system_prompt),
-                        HumanMessage(content=f"工具返回结果：{summary}\n\n请用简短、友好的语言告诉用户当前猪场的情况。")
-                    ]
-                    response = llm.invoke(messages)
-                    answer = response.content if hasattr(response, 'content') else str(response)
-                    
-                    return AgentResult(
-                        success=True,
-                        answer=answer,
-                        worker_name=self.name,
-                        image=image_base64,
-                        thoughts=[f"调用工具: {tool.name}", f"工具返回: {summary}"],
-                        tool_outputs=[summary]
-                    )
-                except Exception as e:
-                    logger.error(f"简化工具调用失败: {e}", exc_info=True)
-                    # 继续使用标准 ReAct 流程
-            
-            # 标准 ReAct 流程（作为降级方案）
+            # 标准 ReAct 流程
             # 构建 ReAct 提示词
             react_prompt = self._build_react_prompt()
             
@@ -342,10 +295,13 @@ class WorkerAgent(ABC):
             from v1.logic.central_agent_core import RichTraceHandler
             callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
             
+            # 添加日志确认 callbacks 被创建
+            logger.info(f"创建 AgentExecutor，callbacks 数量: {len(callbacks)}")
+            
             agent_executor = AgentExecutor(
                 agent=agent,
                 tools=tools,
-                verbose=False,
+                verbose=True,  # 改为 True 以触发回调
                 handle_parsing_errors=True,
                 max_iterations=3,
                 return_intermediate_steps=True,

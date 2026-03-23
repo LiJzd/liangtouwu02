@@ -117,16 +117,50 @@ class RichTraceHandler(BaseCallbackHandler):
 
     def on_tool_start(self, serialized, input_str, **kwargs):  # type: ignore[override]
         """工具开始执行时触发"""
+        name = (serialized or {}).get("name", "tool")
+        
+        # 添加日志确认回调被触发
+        import logging
+        logger = logging.getLogger("central_agent")
+        logger.info(f"on_tool_start 被调用: {name}")
+        
         if not HAS_RICH or not console:
-            name = (serialized or {}).get("name", "tool")
             print(f"[{_ZH_AGENT}][{_ZH_TOOL_START}] {name} {_ZH_INPUT}={input_str}")
             return
         
-        name = (serialized or {}).get("name", "tool")
-        console.print(f"[bold blue]🔧 工具启动:[/] {name}", style="blue")
+        # 格式化输入参数
+        input_display = str(input_str)
+        try:
+            import json
+            if input_display.strip().startswith('{') or input_display.strip().startswith('['):
+                parsed = json.loads(input_display)
+                input_display = json.dumps(parsed, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        
+        if len(input_display) > 300:
+            input_display = input_display[:300] + "..."
+        
+        content = Text()
+        content.append("🔧 工具名称: ", style="bold blue")
+        content.append(f"{name}\n", style="cyan")
+        content.append("📥 输入参数: ", style="bold yellow")
+        content.append(input_display, style="white")
+        
+        console.print(Panel(
+            content,
+            title="[bold blue]⚡ Tool Start[/]",
+            border_style="blue",
+            expand=False
+        ))
 
     def on_tool_end(self, output, **kwargs):  # type: ignore[override]
         """工具执行完成时触发"""
+        # 添加日志确认回调被触发
+        import logging
+        logger = logging.getLogger("central_agent")
+        logger.info(f"on_tool_end 被调用，输出长度: {len(str(output))}")
+        
         # 推送到 SSE 调试流
         asyncio.create_task(self._push_event("observation", {
             "output": str(output)[:500]  # 限制长度
@@ -136,18 +170,28 @@ class RichTraceHandler(BaseCallbackHandler):
             print(f"[{_ZH_AGENT}][{_ZH_TOOL_END}] {_ZH_OUTPUT}={output}")
             return
         
-        # 截断过长输出
+        # 尝试格式化 JSON 输出
         output_str = str(output)
-        if len(output_str) > 300:
-            output_str = output_str[:300] + "..."
+        try:
+            import json
+            # 如果是 JSON，格式化显示
+            if output_str.strip().startswith('{') or output_str.strip().startswith('['):
+                parsed = json.loads(output_str)
+                output_str = json.dumps(parsed, ensure_ascii=False, indent=2)
+        except Exception:
+            pass  # 不是 JSON，保持原样
+        
+        # 限制输出长度
+        if len(output_str) > 800:
+            output_str = output_str[:800] + "\n... (输出过长，已截断)"
         
         content = Text()
-        content.append("✅ Output: ", style="bold green")
-        content.append(output_str, style="green")
+        content.append("✅ 工具返回结果:\n", style="bold green")
+        content.append(output_str, style="white")
         
         console.print(Panel(
             content,
-            title="[bold green]工具返回[/]",
+            title="[bold green]🔧 Tool Output[/]",
             border_style="green",
             expand=False
         ))
