@@ -28,6 +28,7 @@ export interface Alert {
     type: string;
     risk: 'Critical' | 'High' | 'Medium' | 'Low'; // 风险等级枚举
     timestamp: string;
+    message?: string; // 报警附带的消息或大模型诊断分析
 }
 
 /** 统一后端 API 响应包装 */
@@ -296,7 +297,8 @@ export const apiService = {
         }
 
         // --- 真实 API 高级流处理逻辑 ---
-        const resp = await fetch('/api/inspection/generate/stream', {
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
+        const resp = await fetch(`${baseUrl}/inspection/generate/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ pig_id: pigId })
@@ -343,5 +345,34 @@ export const apiService = {
                 sep = buffer.indexOf('\n\n');
             }
         }
+    },
+
+    /**
+     * AI 多智能体聊天接口（对接 Python AI 端点的 V2 接口）
+     * 实际调用 8000 端口，用于多模态交互
+     */
+    chatWithPigBot: async (
+        messages: { role: string; content: any }[],
+        imageUrls: string[] = []
+    ) => {
+        // AI 后端默认端口是 8000，使用它来做真实接口请求
+        // 如果后端有统一代理可根据需要调整
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api' : '/api';
+        const res = await fetch(`${baseUrl}/v1/agent/chat/v2`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: "demo_user",
+                messages,
+                image_urls: imageUrls,
+                metadata: {}
+            })
+        });
+        
+        if (!res.ok) {
+            const errBody = await res.text();
+            throw new Error(`Agent Chat Failed: ${res.status} - ${errBody}`);
+        }
+        return await res.json();
     }
 };

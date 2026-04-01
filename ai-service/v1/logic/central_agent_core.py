@@ -92,6 +92,12 @@ class RichTraceHandler(BaseCallbackHandler):
         """Agent 决策时触发"""
         tool_name = getattr(action, "tool", "unknown")
         tool_input = getattr(action, "tool_input", "")
+        log_text = getattr(action, "log", "")
+        
+        # 提取 Thought
+        thought = log_text.split("Action:")[0].strip()
+        if thought.startswith("Thought:"):
+            thought = thought[8:].strip()
         
         # 推送到 SSE 调试流
         asyncio.create_task(self._push_event("action", {
@@ -103,14 +109,17 @@ class RichTraceHandler(BaseCallbackHandler):
             return
         
         content = Text()
-        content.append("🤖 Action: ", style="bold cyan")
+        if thought:
+            content.append("💡 思考: ", style="bold green")
+            content.append(f"{thought}\n", style="white")
+        content.append("🤖 动作: ", style="bold cyan")
         content.append(f"{tool_name}\n", style="cyan")
-        content.append("📝 Input: ", style="bold yellow")
+        content.append("📝 参数: ", style="bold yellow")
         content.append(str(tool_input), style="yellow")
         
         console.print(Panel(
             content,
-            title="[bold magenta]Agent 决策[/]",
+            title="[bold magenta]Agent 思维链[/]",
             border_style="magenta",
             expand=False
         ))
@@ -119,44 +128,13 @@ class RichTraceHandler(BaseCallbackHandler):
         """工具开始执行时触发"""
         name = (serialized or {}).get("name", "tool")
         
-        # 添加日志确认回调被触发
         import logging
         logger = logging.getLogger("central_agent")
         logger.info(f"on_tool_start 被调用: {name}")
-        
-        if not HAS_RICH or not console:
-            print(f"[{_ZH_AGENT}][{_ZH_TOOL_START}] {name} {_ZH_INPUT}={input_str}")
-            return
-        
-        # 格式化输入参数
-        input_display = str(input_str)
-        try:
-            import json
-            if input_display.strip().startswith('{') or input_display.strip().startswith('['):
-                parsed = json.loads(input_display)
-                input_display = json.dumps(parsed, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-        
-        if len(input_display) > 300:
-            input_display = input_display[:300] + "..."
-        
-        content = Text()
-        content.append("🔧 工具名称: ", style="bold blue")
-        content.append(f"{name}\n", style="cyan")
-        content.append("📥 输入参数: ", style="bold yellow")
-        content.append(input_display, style="white")
-        
-        console.print(Panel(
-            content,
-            title="[bold blue]⚡ Tool Start[/]",
-            border_style="blue",
-            expand=False
-        ))
+        # 不再向控制台打印工具输入的原始数据，以保持终端整洁
 
     def on_tool_end(self, output, **kwargs):  # type: ignore[override]
         """工具执行完成时触发"""
-        # 添加日志确认回调被触发
         import logging
         logger = logging.getLogger("central_agent")
         logger.info(f"on_tool_end 被调用，输出长度: {len(str(output))}")
@@ -165,36 +143,7 @@ class RichTraceHandler(BaseCallbackHandler):
         asyncio.create_task(self._push_event("observation", {
             "output": str(output)[:500]  # 限制长度
         }))
-        
-        if not HAS_RICH or not console:
-            print(f"[{_ZH_AGENT}][{_ZH_TOOL_END}] {_ZH_OUTPUT}={output}")
-            return
-        
-        # 尝试格式化 JSON 输出
-        output_str = str(output)
-        try:
-            import json
-            # 如果是 JSON，格式化显示
-            if output_str.strip().startswith('{') or output_str.strip().startswith('['):
-                parsed = json.loads(output_str)
-                output_str = json.dumps(parsed, ensure_ascii=False, indent=2)
-        except Exception:
-            pass  # 不是 JSON，保持原样
-        
-        # 限制输出长度
-        if len(output_str) > 800:
-            output_str = output_str[:800] + "\n... (输出过长，已截断)"
-        
-        content = Text()
-        content.append("✅ 工具返回结果:\n", style="bold green")
-        content.append(output_str, style="white")
-        
-        console.print(Panel(
-            content,
-            title="[bold green]🔧 Tool Output[/]",
-            border_style="green",
-            expand=False
-        ))
+        # 不再向控制台打印带有完整数据的观测结果，避免控制台刷屏
 
     def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
         """Agent 完成推理时触发"""

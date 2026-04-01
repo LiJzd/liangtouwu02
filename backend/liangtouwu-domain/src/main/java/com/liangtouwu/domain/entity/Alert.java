@@ -67,4 +67,9 @@ public class Alert {
      * </p>
      */
     private String timestamp;
+
+    /**
+     * 详细诊断/告警消息内容
+     */
+    private String message;
 }

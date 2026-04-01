@@ -23,7 +23,11 @@ router = APIRouter()
 
 @router.post("/handle", response_model=BotHandleResponse)
 async def handle_message_api(payload: BotHandleRequest, session: AsyncSession = Depends(get_session)):
-    reply, image = await handle_message(session, payload.qq_user_id, payload.message, payload.guild_id)
+    reply, image = await handle_message(
+        session, payload.qq_user_id, payload.message,
+        guild_id=payload.guild_id,
+        image_urls=payload.image_urls,
+    )
     return BotHandleResponse(reply=reply, image=image)
 
 

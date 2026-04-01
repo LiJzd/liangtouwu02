@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.liangtouwu.business.dto.InspectionGenerateRequest;
 import com.liangtouwu.business.dto.InspectionGenerateResponse;
 import com.liangtouwu.business.service.InspectionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpMethod;
@@ -37,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
  */
 @Service
 public class InspectionServiceImpl implements InspectionService {
+    private static final Logger log = LoggerFactory.getLogger(InspectionServiceImpl.class);
 
     // AI 后端的 API 路由定义
     private static final String GENERATE_PATH = "/api/v1/inspection/generate"; // 同步生成
@@ -124,6 +127,9 @@ public class InspectionServiceImpl implements InspectionService {
     public ResponseBodyEmitter generateReportStream(InspectionGenerateRequest request) {
         // 创建一个永不超时的 emitter，直到手动关闭
         ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
+        emitter.onCompletion(() -> log.info("inspection stream completed pigId={}", request.pigId()));
+        emitter.onTimeout(() -> log.warn("inspection stream timed out pigId={}", request.pigId()));
+        emitter.onError(ex -> log.warn("inspection stream emitter error pigId={} error={}", request.pigId(), ex.toString()));
 
         // 开启异步任务，避免阻塞 Servlet 容器主线程
         CompletableFuture.runAsync(() -> {
@@ -144,7 +150,15 @@ public class InspectionServiceImpl implements InspectionService {
                                 String line;
                                 while ((line = reader.readLine()) != null) {
                                     // 将读取到的每一行原样推送到前端
-                                    emitter.send(line + "\n", MediaType.TEXT_PLAIN);
+                                    try {
+                                        emitter.send(line + "\n", MediaType.TEXT_PLAIN);
+                                    } catch (Exception sendEx) {
+                                        if (isClientAbort(sendEx)) {
+                                            log.info("inspection stream client disconnected pigId={}", request.pigId());
+                                            return null;
+                                        }
+                                        throw sendEx;
+                                    }
                                 }
                             }
                             return null;
@@ -153,6 +167,11 @@ public class InspectionServiceImpl implements InspectionService {
                 // AI 传输完毕，结束 emitter
                 emitter.complete();
             } catch (Exception ex) {
+                if (isClientAbort(ex)) {
+                    log.info("inspection stream aborted by client pigId={}", request.pigId());
+                    emitter.complete();
+                    return;
+                }
                 // 异常处理：发送错误事件并结束连接
                 try {
                     emitter.send("event: error\n", MediaType.TEXT_PLAIN);
@@ -188,6 +207,27 @@ public class InspectionServiceImpl implements InspectionService {
     /**
      * URL 格式化：去除末尾斜杠
      */
+    private boolean isClientAbort(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String className = current.getClass().getName();
+            String message = current.getMessage();
+            if (className.contains("ClientAbortException") || className.contains("AsyncRequestNotUsableException")) {
+                return true;
+            }
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("broken pipe")
+                        || lower.contains("connection reset")
+                        || message.contains("软件中止了一个已建立的连接")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private String normalizeBaseUrl(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) {
             return "http://localhost:8000";

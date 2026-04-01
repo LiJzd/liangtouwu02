@@ -4,56 +4,57 @@
     <select id="findAbnormalPigs" resultType="com.liangtouwu.domain.entity.Pig">
         SELECT * FROM pig WHERE score >= 80 OR issue IS NOT NULL
     </select>
-    
+
     <select id="getAverageBodyTemp" resultType="java.lang.Double">
         SELECT AVG(body_temp) FROM pig
     </select>
-    
+
     <select id="getAverageActivityLevel" resultType="java.lang.Integer">
         SELECT AVG(activity_level) FROM pig
     </select>
-    
-    <!-- ========== AI Tool 专用查询（租户隔离） ========== -->
-    
+
+    <!--
+      Current runtime schema does not contain user_id on table pig.
+      Keep mapper method names unchanged for service compatibility, but
+      execute queries against the existing single-tenant schema.
+    -->
+
     <select id="findByUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig 
-        WHERE user_id = #{userId}
+        SELECT * FROM pig
         ORDER BY score DESC
         LIMIT #{limit}
     </select>
-    
+
     <select id="findByIdAndUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig 
-        WHERE id = #{pigId} AND user_id = #{userId}
+        SELECT * FROM pig
+        WHERE id = #{pigId}
     </select>
-    
+
     <select id="findAbnormalByUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig 
-        WHERE user_id = #{userId} 
-          AND (score >= #{threshold} OR issue IS NOT NULL)
+        SELECT * FROM pig
+        WHERE (score >= #{threshold} OR issue IS NOT NULL)
         ORDER BY score DESC
         LIMIT #{limit}
     </select>
-    
+
     <select id="countByUserId" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM pig WHERE user_id = #{userId}
+        SELECT COUNT(*) FROM pig
     </select>
-    
+
     <select id="countAbnormalByUserId" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM pig 
-        WHERE user_id = #{userId} 
-          AND (score >= #{threshold} OR issue IS NOT NULL)
+        SELECT COUNT(*) FROM pig
+        WHERE (score >= #{threshold} OR issue IS NOT NULL)
     </select>
-    
+
     <select id="getAvgBodyTempByUserId" resultType="java.lang.Double">
-        SELECT AVG(body_temp) FROM pig WHERE user_id = #{userId}
+        SELECT AVG(body_temp) FROM pig
     </select>
-    
+
     <select id="getAvgActivityLevelByUserId" resultType="java.lang.Integer">
-        SELECT AVG(activity_level) FROM pig WHERE user_id = #{userId}
+        SELECT AVG(activity_level) FROM pig
     </select>
-    
+
     <select id="getAvgHealthScoreByUserId" resultType="java.lang.Integer">
-        SELECT AVG(score) FROM pig WHERE user_id = #{userId}
+        SELECT AVG(score) FROM pig
     </select>
 </mapper>

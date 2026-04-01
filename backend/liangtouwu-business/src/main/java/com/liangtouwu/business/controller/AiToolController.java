@@ -1,8 +1,10 @@
 package com.liangtouwu.business.controller;
 
+import com.liangtouwu.business.dto.AlertBroadcastRequest;
 import com.liangtouwu.business.dto.ai.*;
 import com.liangtouwu.business.service.AiToolService;
 import com.liangtouwu.common.vo.ApiResponse;
+import com.liangtouwu.domain.entity.Alert;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,7 +21,7 @@ import org.springframework.web.bind.annotation.*;
  * - 返回数据已去重去冗余
  */
 @RestController
-@RequestMapping("/api/v1/ai-tool")
+@RequestMapping("/v1/ai-tool")
 public class AiToolController {
 
     private final AiToolService aiToolService;
@@ -70,5 +72,13 @@ public class AiToolController {
         @RequestBody(required = false) FarmStatsRequest request
     ) {
         return ApiResponse.success(aiToolService.getFarmStats(userId, request));
+    }
+
+    @PostMapping("/alerts/publish")
+    public ApiResponse<Alert> publishAlert(
+        @RequestHeader("X-User-ID") String userId,
+        @RequestBody AlertBroadcastRequest request
+    ) {
+        return ApiResponse.success(aiToolService.publishAlert(userId, request));
     }
 }

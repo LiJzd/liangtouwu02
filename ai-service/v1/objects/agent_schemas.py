@@ -7,13 +7,14 @@ from pydantic import BaseModel, Field
 
 class AgentMessage(BaseModel):
     role: str = Field(..., description="system/user/assistant")
-    content: str
+    content: Any = Field(..., description="文本字符串或多模态内容数组")
 
 
 class AgentChatRequest(BaseModel):
     user_id: str
     messages: List[AgentMessage]
     metadata: Optional[Dict[str, Any]] = None
+    image_urls: Optional[List[str]] = Field(None, description="用户发送的图片URL列表（多模态问诊）")
 
 
 class AgentChatResponse(BaseModel):

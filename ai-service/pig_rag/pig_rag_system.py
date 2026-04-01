@@ -26,7 +26,7 @@ if sys.stderr.encoding != 'utf-8':
 import os
 import json
 import shutil
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_community.embeddings import DashScopeEmbeddings  # 阿里百炼官方 Embedding 接口
 
 # ============================================================

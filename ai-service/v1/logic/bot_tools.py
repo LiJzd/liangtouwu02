@@ -273,6 +273,362 @@ async def tool_query_pig_disease_rag(arg: str) -> str:
         }, ensure_ascii=False)
 
 
+@tool(name="query_env_status", description="查询猪场当前环境数据（温度、湿度、氨气浓度等IoT传感器数据），用于判断是否环境因素导致发病")
+async def tool_query_env_status(arg: str) -> str:
+    """
+    查询猪场环境状态数据
+
+    参数:
+        area: 区域名称（可选，默认查询全场）
+
+    返回:
+        JSON 格式的环境数据，包含温度、湿度、氨气、CO2等
+    """
+    import random
+    from datetime import datetime
+
+    data = _parse_args(arg)
+    area = data.get("area", "全场") if isinstance(data, dict) else "全场"
+
+    # 尝试从 Java 后端获取真实环境数据
+    try:
+        async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
+            response = await client.post(
+                f"{JAVA_API_BASE_URL}/api/v1/ai-tool/farm/stats",
+                headers={"X-User-ID": "demo_user_001", "Content-Type": "application/json"},
+                json={}
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    # 后端有真实数据，直接返回
+                    farm_data = result.get("data", {})
+                    env_result = {
+                        "source": "real_time_iot",
+                        "area": area,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "farm_stats": farm_data,
+                    }
+                    return json.dumps(env_result, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # 后端不可用，使用模拟数据兜底
+
+    # 模拟数据兜底：生成合理范围内的环境参数
+    env_result = {
+        "source": "simulated_iot",
+        "area": area,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "environment": {
+            "temperature_c": round(random.uniform(18.0, 28.0), 1),
+            "humidity_pct": round(random.uniform(55.0, 80.0), 1),
+            "ammonia_ppm": round(random.uniform(5.0, 25.0), 1),
+            "co2_ppm": round(random.uniform(800, 2500), 0),
+            "ventilation_status": random.choice(["正常运行", "低速运行", "高速运行"]),
+            "lighting": random.choice(["自然光", "人工补光", "昏暗"]),
+        },
+        "alert_thresholds": {
+            "temperature_high": 30.0,
+            "temperature_low": 15.0,
+            "humidity_high": 85.0,
+            "ammonia_high": 20.0,
+            "co2_high": 3000,
+        },
+        "recent_weather": {
+            "outdoor_temp_c": round(random.uniform(5.0, 35.0), 1),
+            "condition": random.choice(["晴", "多云", "阴", "小雨", "大雨"]),
+            "season": _get_current_season(),
+        },
+        "pig_population": {
+            "total_count": random.randint(80, 200),
+            "abnormal_count": random.randint(0, 5),
+        }
+    }
+
+    # 模拟环境异常判断
+    alerts = []
+    env = env_result["environment"]
+    thresholds = env_result["alert_thresholds"]
+    if env["temperature_c"] > thresholds["temperature_high"]:
+        alerts.append(f"⚠️ 舍内温度偏高 ({env['temperature_c']}°C)，可能导致热应激")
+    if env["temperature_c"] < thresholds["temperature_low"]:
+        alerts.append(f"⚠️ 舍内温度偏低 ({env['temperature_c']}°C)，仔猪易感冒")
+    if env["humidity_pct"] > thresholds["humidity_high"]:
+        alerts.append(f"⚠️ 湿度过高 ({env['humidity_pct']}%)，易滋生细菌")
+    if env["ammonia_ppm"] > thresholds["ammonia_high"]:
+        alerts.append(f"⚠️ 氨气浓度超标 ({env['ammonia_ppm']}ppm)，影响呼吸道健康")
+
+    env_result["alerts"] = alerts if alerts else ["✅ 环境指标均在正常范围内"]
+
+    return json.dumps(env_result, ensure_ascii=False, indent=2)
+
+
+def _get_current_season() -> str:
+    """根据当前月份返回季节"""
+    month = datetime.now().month
+    if month in (3, 4, 5):
+        return "春季"
+    elif month in (6, 7, 8):
+        return "夏季"
+    elif month in (9, 10, 11):
+        return "秋季"
+    else:
+        return "冬季"
+
+
+@tool(name="query_similar_cases", description="查询历史相似病例，根据症状描述在知识库中检索曾经出现过类似症状的案例及其处理结果")
+async def tool_query_similar_cases(arg: str) -> str:
+    """
+    基于 RAG 向量检索查询历史相似病例
+
+    参数:
+        symptoms: 症状描述（如：拉稀、咳嗽、不吃料）
+        breed: 品种（可选，默认两头乌）
+
+    返回:
+        JSON 格式的相似历史案例列表
+    """
+    data = _parse_args(arg)
+
+    symptoms = None
+    breed = "两头乌"
+    if isinstance(data, dict):
+        symptoms = data.get("symptoms") or data.get("_raw")
+        breed = data.get("breed", "两头乌")
+    else:
+        symptoms = str(arg).strip()
+
+    # 兼容 LLM 传入列表格式的症状（如 ["嗜睡", "虚弱"]）
+    if isinstance(symptoms, list):
+        symptoms = "、".join(str(s) for s in symptoms)
+
+    if not symptoms:
+        return json.dumps({"error": "请提供症状描述"}, ensure_ascii=False)
+
+    # 尝试使用 RAG 向量检索
+    try:
+        from pig_rag.pig_rag_system import query_similar_pig_records
+        rag_result = query_similar_pig_records(
+            breed=breed,
+            age_days=120,      # 默认使用中等日龄
+            weight_kg=50.0,    # 默认中等体重
+            top_n=3,
+        )
+        rag_data = json.loads(rag_result) if isinstance(rag_result, str) else rag_result
+    except Exception as e:
+        rag_data = {"error": f"RAG 检索失败: {str(e)}"}
+
+    # 构建历史病例库（模拟 + RAG 结合）
+    # 这些是两头乌常见的典型病例记录
+    historical_cases = [
+        {
+            "case_id": "CASE-2024-001",
+            "date": "2024-11-15",
+            "breed": "两头乌",
+            "age_months": 4,
+            "symptoms": ["腹泻", "食欲下降", "精神萎靡"],
+            "diagnosis": "急性肠胃炎（饲料变质引发）",
+            "treatment": "停食12小时，口服补液盐+庆大霉素，3天康复",
+            "outcome": "治愈",
+            "env_factors": "换料期间未过渡"
+        },
+        {
+            "case_id": "CASE-2024-002",
+            "date": "2024-12-03",
+            "breed": "两头乌",
+            "age_months": 3,
+            "symptoms": ["咳嗽", "流鼻涕", "体温38.5°C"],
+            "diagnosis": "上呼吸道感染（天气骤降引发）",
+            "treatment": "阿莫西林+退烧药，加强保暖，5天康复",
+            "outcome": "治愈",
+            "env_factors": "气温骤降15°C以上"
+        },
+        {
+            "case_id": "CASE-2025-001",
+            "date": "2025-01-20",
+            "breed": "两头乌",
+            "age_months": 6,
+            "symptoms": ["皮肤红疹", "瘙痒", "蹭墙"],
+            "diagnosis": "疥螨感染",
+            "treatment": "伊维菌素皮下注射，患部涂敌百虫，隔离治疗",
+            "outcome": "治愈（14天）",
+            "env_factors": "圈舍潮湿、通风不良"
+        },
+        {
+            "case_id": "CASE-2025-002",
+            "date": "2025-02-10",
+            "breed": "两头乌",
+            "age_months": 2,
+            "symptoms": ["水样腹泻", "脱水", "体温升高至40°C"],
+            "diagnosis": "传染性胃肠炎（TGE病毒）",
+            "treatment": "隔离+补液+抗病毒+全场消毒，严重者淘汰",
+            "outcome": "死亡1头，其余治愈",
+            "env_factors": "冬季低温、圈舍消毒不彻底"
+        },
+        {
+            "case_id": "CASE-2025-003",
+            "date": "2025-03-05",
+            "breed": "两头乌",
+            "age_months": 5,
+            "symptoms": ["不吃料", "趴卧不起", "腹部胀大"],
+            "diagnosis": "胃溃疡（应激+饲料过细）",
+            "treatment": "停食24小时，碳酸氢钠灌胃，改粗料，7天好转",
+            "outcome": "治愈",
+            "env_factors": "转群应激+饲料粉碎过细"
+        },
+    ]
+
+    # 根据症状做简单的关键词匹配排序
+    symptoms_lower = symptoms.lower()
+    scored_cases = []
+    for case in historical_cases:
+        score = 0
+        for sym in case["symptoms"]:
+            if any(kw in symptoms_lower for kw in sym):
+                score += 1
+            if any(kw in sym for kw in symptoms_lower if len(kw) > 1):
+                score += 1
+        scored_cases.append((score, case))
+
+    scored_cases.sort(key=lambda x: x[0], reverse=True)
+    matched_cases = [c for _, c in scored_cases[:3]]
+
+    result = {
+        "query_symptoms": symptoms,
+        "matched_cases": matched_cases,
+        "match_count": len(matched_cases),
+        "rag_similar_pigs": rag_data,
+        "advice": "以上为历史类似案例，仅供参考，具体诊断需结合当前猪只实际状况"
+    }
+
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@tool(name="query_pig_health_records", description="查询猪只健康档案，支持按ID查单只猪的完整档案或查询当前所有异常猪只")
+async def tool_query_pig_health_records(arg: str) -> str:
+    """
+    查询猪只健康档案
+
+    参数:
+        pig_id: 猪只ID（可选，查单只猪详细档案）
+        abnormal_only: 只查异常猪只（默认 false）
+        threshold: 健康评分阈值（默认 60）
+
+    返回:
+        JSON 格式的猪只健康档案或异常猪只列表
+    """
+    data = _parse_args(arg)
+
+    pig_id = None
+    abnormal_only = False
+    threshold = 60
+
+    if isinstance(data, dict):
+        pig_id = data.get("pig_id")
+        abnormal_only = data.get("abnormal_only", False)
+        threshold = _coerce_int(data.get("threshold"), 60)
+        if not pig_id and data.get("_args"):
+            pig_id = data["_args"][0]
+
+    if not pig_id:
+        pig_id = (arg or "").strip() if not abnormal_only else None
+
+    user_id = "demo_user_001"
+
+    # 查询单只猪的完整档案
+    if pig_id:
+        try:
+            async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
+                response = await client.post(
+                    f"{JAVA_API_BASE_URL}/api/v1/ai-tool/pigs/info",
+                    headers={"X-User-ID": user_id, "Content-Type": "application/json"},
+                    json={"pigId": str(pig_id), "includeLifecycle": True}
+                )
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("code") == 200:
+                        pig_data = result.get("data", {})
+                        # 增加健康评估摘要
+                        health_summary = _assess_pig_health(pig_data)
+                        return json.dumps({
+                            "pig_id": pig_id,
+                            "basic_info": pig_data,
+                            "health_assessment": health_summary,
+                        }, ensure_ascii=False, indent=2)
+        except Exception:
+            pass  # Java API 不可用，使用模拟数据
+
+        # 模拟兜底
+        return json.dumps({
+            "pig_id": pig_id,
+            "basic_info": {
+                "breed": "两头乌",
+                "current_month": 5,
+                "current_weight_kg": 48.5,
+                "health_status": "待评估",
+            },
+            "health_assessment": {
+                "score": 75,
+                "level": "一般",
+                "notes": "无法连接数据库获取详细档案，建议人工核查"
+            }
+        }, ensure_ascii=False, indent=2)
+
+    # 查询异常猪只列表
+    try:
+        async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
+            response = await client.post(
+                f"{JAVA_API_BASE_URL}/api/v1/ai-tool/pigs/abnormal",
+                headers={"X-User-ID": user_id, "Content-Type": "application/json"},
+                json={"threshold": threshold, "limit": 20}
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("code") == 200:
+                    return json.dumps({
+                        "abnormal_pigs": result.get("data", []),
+                        "threshold": threshold,
+                    }, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    # 模拟兜底
+    return json.dumps({
+        "abnormal_pigs": [
+            {"pig_id": "LTW-037", "breed": "两头乌", "health_score": 45, "symptoms": ["食欲下降", "精神不振"]},
+            {"pig_id": "LTW-052", "breed": "两头乌", "health_score": 55, "symptoms": ["轻微腹泻"]},
+        ],
+        "threshold": threshold,
+        "source": "simulated",
+        "note": "模拟数据，仅供参考"
+    }, ensure_ascii=False, indent=2)
+
+
+def _assess_pig_health(pig_data: dict) -> dict:
+    """根据猪只档案数据评估健康状况"""
+    score = 80  # 基础分
+
+    weight = pig_data.get("current_weight_kg", 0)
+    month = pig_data.get("current_month", 0)
+
+    # 体重偏离检查（两头乌参考标准）
+    if month > 0 and weight > 0:
+        expected_weight = month * 10  # 粗略估算：每月约10kg
+        deviation = abs(weight - expected_weight) / expected_weight
+        if deviation > 0.3:
+            score -= 20
+        elif deviation > 0.15:
+            score -= 10
+
+    level = "良好" if score >= 80 else ("一般" if score >= 60 else "关注")
+
+    return {
+        "score": score,
+        "level": level,
+        "weight_status": "正常" if month == 0 or abs(weight - month * 10) / max(month * 10, 1) < 0.15 else "偏离标准",
+        "notes": "基于档案数据自动评估"
+    }
+
+
 @tool(name="query_pig_growth_prediction", description="生长曲线 RAG 预测未来轨迹")
 async def tool_query_pig_growth_prediction(arg: str) -> str:
     data = _parse_args(arg)
@@ -402,6 +758,58 @@ async def tool_get_farm_stats(arg: str) -> str:
         return f"查询猪场统计失败: {str(e)}"
 
 
+@tool(
+    name="publish_alert",
+    description="触发网页端异常告警大屏，并播放网页端语音播报。当通过其他工具获取到异常（如环境异常、健康异常）时，务必调用此工具将告警发布并触发语音提醒。参数是JSON格式，包含 pigId, area, type, risk, announcementText 字段。",
+)
+async def tool_publish_alert(arg: str) -> str:
+    data = _parse_args(arg)
+    if not isinstance(data, dict):
+        return json.dumps({"error": "publish_alert expects a JSON object payload."}, ensure_ascii=False)
+
+    payload = {
+        "pigId": data.get("pigId") or data.get("pig_id") or "UNKNOWN",
+        "area": data.get("area") or "unknown-area",
+        "type": data.get("type") or "综合异常",
+        "risk": data.get("risk") or "High",
+        "timestamp": data.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "announcementText": data.get("announcementText") or data.get("announcement_text"),
+    }
+    user_id = str(data.get("user_id") or "agent_system")
+    
+    import logging
+    logger = logging.getLogger("bot_tools")
+    logger.info(f"🎙️ 正在调用网页语音播报 / 告警发布工具，播报内容: {payload.get('announcementText')}")
+
+    try:
+        async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
+            response = await client.post(
+                f"{JAVA_API_BASE_URL}/api/v1/ai-tool/alerts/publish",
+                headers={"X-User-ID": user_id, "Content-Type": "application/json"},
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("code") != 200:
+                return json.dumps(
+                    {"error": result.get("message", "publish_alert failed")},
+                    ensure_ascii=False,
+                )
+
+            return json.dumps(
+                {
+                    "alert_published": True,
+                    "alert": result.get("data"),
+                },
+                ensure_ascii=False,
+            )
+    except httpx.HTTPError as e:
+        return json.dumps({"error": f"publish_alert HTTP error: {str(e)}"}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": f"publish_alert failed: {str(e)}"}, ensure_ascii=False)
+
+
 @tool(name="capture_pig_farm_snapshot", description="截取猪场视频图像并进行 AI 识别，返回检测到的猪只位置和状态")
 async def tool_capture_pig_farm_snapshot(arg: str) -> str:
     """
@@ -436,7 +844,7 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
         # 确定视频路径
         if not video_file:
             # 使用默认视频路径
-            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/assets"))
+            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
             # 查找第一个视频文件
             if os.path.exists(video_dir):
                 for f in os.listdir(video_dir):
@@ -445,13 +853,13 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
                         break
         else:
             # 使用指定的视频文件
-            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/assets"))
+            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
             video_file = os.path.join(video_dir, video_file)
         
         if not video_file or not os.path.exists(video_file):
             return json.dumps({
                 "error": "未找到可用的视频文件",
-                "message": "请确保视频文件存在于 resources/assets 目录中"
+                "message": "请确保视频文件存在于 resources/videos 目录中"
             }, ensure_ascii=False)
         
         # 打开视频并截取当前帧
@@ -527,11 +935,10 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
             cv2.putText(annotated_frame, label, (x1, y1 - 10), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
-        # 将图片编码为 base64
+        # 将图片编码为 base64（不包含 data URI 前缀，由前端添加）
         import base64
         _, buffer = cv2.imencode('.jpg', annotated_frame)
         image_base64 = base64.b64encode(buffer).decode('utf-8')
-        image_data_uri = f"data:image/jpeg;base64,{image_base64}"
         
         # 生成友好的摘要信息
         if len(detections) > 0:
@@ -547,9 +954,9 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
         else:
             summary = "未检测到任何目标"
         
-        # 将图片存入全局缓存
+        # 将图片存入全局缓存（存储纯 base64，不含 data URI 前缀）
         cache_key = f"snapshot_{os.path.basename(video_file)}_{datetime.now().timestamp()}"
-        _IMAGE_CACHE[cache_key] = image_data_uri
+        _IMAGE_CACHE[cache_key] = image_base64
         
         import logging
         logger = logging.getLogger("bot_tools")

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import os
@@ -21,7 +21,7 @@ class BotClient(botpy.Client):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.settings = get_settings()
-        self.httpx = httpx.AsyncClient(base_url=self.settings.bot_api_base, timeout=30)
+        self.httpx = httpx.AsyncClient(base_url=self.settings.bot_api_base, timeout=90)
 
     async def on_ready(self):
         _log.info(f"robot {self.robot.name} on_ready")
@@ -49,9 +49,53 @@ class BotClient(botpy.Client):
         )
 
     async def on_c2c_message_create(self, message: C2CMessage):
+        # 提取用户发送的图片和语音附件（多模态问诊支持）
+        image_urls = []
+        voice_urls = []
+        if hasattr(message, 'attachments') and message.attachments:
+            for att in message.attachments:
+                url = getattr(att, 'url', None)
+                content_type = str(getattr(att, 'content_type', '')).lower()
+                if not url:
+                    continue
+                # 确保URL以https开头
+                if not url.startswith('http'):
+                    url = 'https://' + url
+                
+                if 'image' in content_type or url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+                    image_urls.append(url)
+                    _log.info(f"提取到图片附件: {url}")
+                elif 'voice' in content_type or 'audio' in content_type or url.lower().endswith(('.silk', '.amr', '.wav', '.mp3', '.ogg')):
+                    voice_urls.append(url)
+                    _log.info(f"提取到语音附件: {url}")
+        
+        # 语音转文字：将语音内容转写后拼接到消息文本
+        message_text = message.content or ""
+        if voice_urls:
+            _log.info(f"检测到 {len(voice_urls)} 条语音消息，开始转写...")
+            try:
+                from v1.logic.voice_to_text import voice_to_text
+                for voice_url in voice_urls:
+                    transcribed = await voice_to_text(voice_url)
+                    if transcribed:
+                        _log.info(f"语音转写成功: {transcribed[:100]}")
+                        # 将语音转写结果拼接到消息文本
+                        if message_text:
+                            message_text = f"{message_text} {transcribed}"
+                        else:
+                            message_text = transcribed
+                    else:
+                        _log.warning(f"语音转写失败: {voice_url[:80]}")
+                        if not message_text:
+                            message_text = "[语音消息转写失败，请重新发送或用文字描述]"
+            except Exception as e:
+                _log.error(f"语音转写异常: {e}", exc_info=True)
+                if not message_text:
+                    message_text = "[语音消息处理失败，请用文字重新描述]"
+        
         _log.info(
             f"c2c received: user_openid={message.author.user_openid} msg_id={message.id} "
-            f"content={message.content!r}"
+            f"content={message_text[:100]!r} image_count={len(image_urls)} voice_count={len(voice_urls)}"
         )
         
         async def reply_func(reply_text, image_path=None):
@@ -199,16 +243,20 @@ class BotClient(botpy.Client):
         await self._handle_and_reply(
             qq_user_id=message.author.user_openid,
             guild_id=None,
-            message_text=message.content or "",
+            message_text=message_text,
             reply_func=reply_func,
+            image_urls=image_urls if image_urls else None,
         )
 
-    async def _handle_and_reply(self, qq_user_id: str, guild_id, message_text: str, reply_func):
+    async def _handle_and_reply(self, qq_user_id: str, guild_id, message_text: str, reply_func, image_urls=None):
         payload = {
             "qq_user_id": qq_user_id,
             "guild_id": guild_id,
             "message": message_text,
         }
+        if image_urls:
+            payload["image_urls"] = image_urls
+            _log.info(f"携带 {len(image_urls)} 张图片发送到后端处理")
         reply = "system busy"
         image_base64 = None
         try:

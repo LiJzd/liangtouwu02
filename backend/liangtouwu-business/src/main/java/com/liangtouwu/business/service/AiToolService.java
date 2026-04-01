@@ -1,6 +1,8 @@
 package com.liangtouwu.business.service;
 
+import com.liangtouwu.business.dto.AlertBroadcastRequest;
 import com.liangtouwu.business.dto.ai.*;
+import com.liangtouwu.domain.entity.Alert;
 
 /**
  * AI Tool 服务接口
@@ -47,4 +49,6 @@ public interface AiToolService {
      * @return 猪场统计
      */
     FarmStatsResponse getFarmStats(String userId, FarmStatsRequest request);
+
+    Alert publishAlert(String userId, AlertBroadcastRequest request);
 }

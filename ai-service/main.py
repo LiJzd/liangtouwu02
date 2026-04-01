@@ -244,6 +244,16 @@ try:
 except ImportError as e:
     logger.warning(f"agent_debug_controller import failed: {e}")
 
+try:
+    from v1.logic.agent_simulation_controller import router as agent_simulation_router
+    app.include_router(
+        agent_simulation_router,
+        prefix="/api/v1/agent",
+        tags=["Agent Simulation"]
+    )
+except ImportError as e:
+    logger.warning(f"agent_simulation_controller import failed: {e}")
+
 # [静态文件服务 - 调试网页]
 try:
     from fastapi.staticfiles import StaticFiles
@@ -276,7 +286,6 @@ if __name__ == "__main__":
         reload=False, 
         log_level=settings.log_level.lower()
     )
-
 
 
 

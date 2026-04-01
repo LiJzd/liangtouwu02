@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field
 
 class BotHandleRequest(BaseModel):
     qq_user_id: str = Field(..., min_length=1)
-    message: str = Field(..., min_length=1)
+    message: str = Field("", description="用户消息文本，纯图片消息时可为空")
     guild_id: Optional[str] = None
+    image_urls: Optional[List[str]] = Field(None, description="用户发送的图片URL列表（多模态问诊）")
 
 
 class BotHandleResponse(BaseModel):

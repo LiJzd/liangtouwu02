@@ -12,3 +12,14 @@ server:
 ai:
   fastapi:
     base-url: http://localhost:8000
+
+xfyun:
+  tts:
+    enabled: true
+    app-id: ${XFYUN_TTS_APP_ID:3340aff1}
+    api-key: ${XFYUN_TTS_API_KEY:87989f1b8f5095384b63726ab1df1764}
+    api-secret: ${XFYUN_TTS_API_SECRET:ZWE2ZmJkMTBlYTJiMTFkZmI4ODZhNmRj}
+    voice-name: ${XFYUN_TTS_VOICE_NAME:x4_xiaoyan}
+    speed: ${XFYUN_TTS_SPEED:50}
+    volume: ${XFYUN_TTS_VOLUME:50}
+    pitch: ${XFYUN_TTS_PITCH:50}

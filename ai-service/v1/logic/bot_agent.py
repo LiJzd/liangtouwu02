@@ -1,10 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger("bot_agent")
 
 import httpx
 from sqlalchemy import desc, select
@@ -160,11 +163,28 @@ async def _save_turn(session: AsyncSession, qq_user_id: str, role: str, content:
     await session.commit()
 
 
-def _build_messages(system_prompt: str, history: list[BotConversation], user_text: str) -> list[dict]:
+def _build_messages(system_prompt: str, history: list[BotConversation], user_text: str, image_urls: Optional[List[str]] = None) -> list[dict]:
+    """构建消息列表，支持多模态图片内容"""
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     for item in reversed(history):
         messages.append({"role": item.role, "content": item.content})
-    messages.append({"role": "user", "content": user_text})
+    
+    # 构建用户消息：有图片时使用多模态格式
+    if image_urls:
+        content_parts = []
+        if user_text:
+            content_parts.append({"type": "text", "text": user_text})
+        else:
+            content_parts.append({"type": "text", "text": "请分析这张图片中的猪只状况"})
+        for url in image_urls:
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": url}
+            })
+        messages.append({"role": "user", "content": content_parts})
+    else:
+        messages.append({"role": "user", "content": user_text})
+    
     return messages
 
 
@@ -184,7 +204,7 @@ def _fallback_reply(text: str) -> str:
     return "系统繁忙，请再说一遍。"
 
 
-async def _call_central_agent(qq_user_id: str, messages: list[dict]) -> tuple[Optional[str], Optional[str]]:
+async def _call_central_agent(qq_user_id: str, messages: list[dict], image_urls: Optional[List[str]] = None) -> tuple[Optional[str], Optional[str]]:
     """
     调用中央智能体
     
@@ -204,6 +224,11 @@ async def _call_central_agent(qq_user_id: str, messages: list[dict]) -> tuple[Op
         "messages": messages,
         "metadata": {"channel": "c2c", "source": "qq_bot"},
     }
+    
+    # 多模态：传递图片URL给中央智能体
+    if image_urls:
+        payload["image_urls"] = image_urls
+        logger.info(f"携带 {len(image_urls)} 张图片调用中央智能体")
     
     try:
         async with httpx.AsyncClient(timeout=settings.central_agent_timeout_seconds) as client:
@@ -287,7 +312,7 @@ def _strip_canned_prefix(text: str) -> str:
     return "\n".join(cleaned).strip()
 
 
-def _shorten_reply(text: str, max_lines: int = 3, max_sentences: int = 3, max_chars: int = 120) -> str:
+def _shorten_reply(text: str, max_lines: int = 8, max_sentences: int = 6, max_chars: int = 300) -> str:
     if not text:
         return ""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -323,15 +348,26 @@ def _postprocess_reply(text: str) -> str:
         return "我在，想聊什么？"
     
     # 【关键】如果回复中包含 ReAct 格式标记，强制提取 Final Answer
-    if any(marker in text for marker in ["Thought:", "Action:", "Observation:", "Question:"]):
+    react_markers = ["Thought:", "Action:", "Observation:", "Question:"]
+    if any(marker in text for marker in react_markers):
         import re
         match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL | re.IGNORECASE)
         if match:
             text = match.group(1).strip()
         else:
-            # 如果没有 Final Answer 但有思考过程，说明格式错误，返回兜底
-            logger.warning(f"检测到思考链污染，原始回复: {text[:200]}")
-            return "系统繁忙，请再说一遍。"
+            # 尝试提取非标记行作为回复（而不是直接丢弃）
+            logger.warning(f"检测到思考链残留，尝试提取有用内容: {text[:200]}")
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            filtered = [
+                line for line in lines
+                if not any(marker in line for marker in react_markers)
+                and not line.startswith("Action Input:")
+            ]
+            if filtered:
+                # 取最后几行有意义的内容
+                text = "\n".join(filtered[-5:])
+            else:
+                return "系统繁忙，请再说一遍。"
     
     text = _strip_canned_prefix(text)
     text = _shorten_reply(text)
@@ -351,9 +387,10 @@ async def _handle_message_locked(
     qq_user_id: str,
     message: str,
     guild_id: Optional[str],
+    image_urls: Optional[List[str]] = None,
 ) -> tuple[str, Optional[str]]:
     """
-    处理消息
+    处理消息（支持多模态图片问诊）
     
     Returns:
         tuple[reply_text, image_base64]: (回复文本, 图片base64)
@@ -361,19 +398,26 @@ async def _handle_message_locked(
     await ensure_user(session, qq_user_id=qq_user_id, guild_id=guild_id)
     text = message.strip()
 
-    if not text:
+    if not text and not image_urls:
         return "请发送有效内容。", None
 
     settings = get_settings()
     history = await _get_history(session, qq_user_id, settings.central_agent_max_history)
-    system_prompt = _SYSTEM_PROMPT if _is_pig_topic(text) else _SYSTEM_PROMPT_GENERAL
-    messages = _build_messages(system_prompt, history, text)
+    
+    # 有图片时强制使用养殖系统提示词（图片问诊=兽医场景）
+    if image_urls:
+        system_prompt = _SYSTEM_PROMPT
+        logger.info(f"检测到图片，启用多模态问诊模式")
+    else:
+        system_prompt = _SYSTEM_PROMPT if _is_pig_topic(text) else _SYSTEM_PROMPT_GENERAL
+    
+    messages = _build_messages(system_prompt, history, text, image_urls=image_urls)
 
     reply = None
     image = None
     try:
         reply, image = await asyncio.wait_for(
-            _call_central_agent(qq_user_id, messages),
+            _call_central_agent(qq_user_id, messages, image_urls=image_urls),
             timeout=settings.central_agent_timeout_seconds,
         )
     except asyncio.TimeoutError:
@@ -383,7 +427,9 @@ async def _handle_message_locked(
         reply = _fallback_reply(text)
     reply = _postprocess_reply(reply)
 
-    await _save_turn(session, qq_user_id, "user", text)
+    # 保存对话记录（图片仅记录文本描述）
+    save_text = text if text else "[用户发送了图片]"
+    await _save_turn(session, qq_user_id, "user", save_text)
     await _save_turn(session, qq_user_id, "assistant", reply)
     return reply, image
 
@@ -392,17 +438,18 @@ async def handle_message(
     session: AsyncSession, 
     qq_user_id: str, 
     message: str, 
-    guild_id: Optional[str] = None
+    guild_id: Optional[str] = None,
+    image_urls: Optional[List[str]] = None,
 ) -> tuple[str, Optional[str]]:
     """
-    处理消息（带锁）
+    处理消息（带锁，支持多模态）
     
     Returns:
         tuple[reply_text, image_base64]: (回复文本, 图片base64)
     """
     lock = _get_user_lock(qq_user_id)
     async with lock:
-        return await _handle_message_locked(session, qq_user_id, message, guild_id)
+        return await _handle_message_locked(session, qq_user_id, message, guild_id, image_urls=image_urls)
 
 
 async def build_daily_brief(session: AsyncSession, qq_user_id: str) -> str:

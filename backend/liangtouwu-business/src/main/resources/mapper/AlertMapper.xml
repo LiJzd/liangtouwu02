@@ -20,4 +20,9 @@
     <select id="countTodayAlerts" resultType="java.lang.Integer">
         SELECT COUNT(*) FROM alert
     </select>
+
+    <insert id="insertAlert" parameterType="com.liangtouwu.domain.entity.Alert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO alert (pig_id, area, type, risk, timestamp, message)
+        VALUES (#{pigId}, #{area}, #{type}, #{risk}, #{timestamp}, #{message})
+    </insert>
 </mapper>

@@ -506,8 +506,8 @@ async def stream_video(filename: str):
     from fastapi.responses import StreamingResponse
     import os
     
-    # 路径构造逻辑：相对于当前文件的 ../../../resources/assets 目录
-    video_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../resources/assets"))
+    # 路径构造逻辑：相对于当前文件的 ../../../resources/videos 目录
+    video_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../resources/videos"))
     video_path = os.path.join(video_dir, filename)
     
     logger.info(f"正在建立 MJPEG 推流连接，文件: {filename}")

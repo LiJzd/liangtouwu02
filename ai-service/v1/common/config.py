@@ -1,4 +1,4 @@
-﻿"""
+"""
 配置管理模块 (等效于 SpringBoot 的 @Configuration + application.yml)
 
 功能说明：
@@ -62,11 +62,12 @@ class Settings(BaseSettings):
     bot_outbox_poll_seconds: int = 10
     central_agent_url: str = "http://127.0.0.1:8000/api/v1/agent/chat"
     central_agent_api_key: str = ""
-    central_agent_timeout_seconds: int = 20
+    central_agent_timeout_seconds: int = 60
     central_agent_max_history: int = 6
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     dashscope_model: str = "qwen-plus"
+    dashscope_vl_model: str = "qwen-vl-max"  # 多模态视觉理解模型
     # ==================== 日志配置 ====================
     log_level: str = "INFO"
     log_file: str = "./logs/algorithm.log"

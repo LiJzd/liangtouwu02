@@ -1,8 +1,11 @@
 package com.liangtouwu.business.service.impl;
 
+import com.liangtouwu.business.dto.AlertBroadcastRequest;
 import com.liangtouwu.business.dto.ai.*;
 import com.liangtouwu.business.mapper.PigMapper;
 import com.liangtouwu.business.service.AiToolService;
+import com.liangtouwu.business.service.AlertService;
+import com.liangtouwu.domain.entity.Alert;
 import com.liangtouwu.domain.entity.Pig;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,9 +29,11 @@ import java.util.stream.Collectors;
 public class AiToolServiceImpl implements AiToolService {
 
     private final PigMapper pigMapper;
+    private final AlertService alertService;
 
-    public AiToolServiceImpl(PigMapper pigMapper) {
+    public AiToolServiceImpl(PigMapper pigMapper, AlertService alertService) {
         this.pigMapper = pigMapper;
+        this.alertService = alertService;
     }
 
     @Override
@@ -174,6 +179,13 @@ public class AiToolServiceImpl implements AiToolService {
     }
 
     // ========== 私有转换方法 ==========
+
+    @Override
+    public Alert publishAlert(String userId, AlertBroadcastRequest request) {
+        log.info("AI Tool - publishAlert: userId={}, pigId={}, area={}, type={}",
+            userId, request.getPigId(), request.getArea(), request.getType());
+        return alertService.createAndBroadcastAlert(request);
+    }
 
     private PigListResponse.PigSimpleDTO convertToPigSimpleDTO(Pig pig) {
         return PigListResponse.PigSimpleDTO.builder()
