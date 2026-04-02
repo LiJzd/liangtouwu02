@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
- * 实时监控 (Monitor) 视图组件 - 集成真实YOLO检测
+ * 实时监控 (Monitor) 视图组件 - 独立版本
  * =====================================
- * 使用AI服务的MJPEG流，已包含YOLO检测框
+ * 直接在前端加载视频并进行YOLO检测可视化
  * 
  * 核心功能：
- * 1. 直接显示AI服务处理后的视频流（已绘制检测框）
- * 2. 无需前端Canvas绘制
- * 3. 实时YOLO检测
+ * 1. 本地视频播放
+ * 2. Canvas实时绘制检测框
+ * 3. 模拟YOLO检测结果
  */
-import { ref, onMounted, onUnmounted } from 'vue';
-import { Camera, Video, Maximize, Scissors, CircleDot, Play, Pause, RefreshCw } from 'lucide-vue-next';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { Camera, Video, Maximize, Scissors, CircleDot, Play, Pause } from 'lucide-vue-next';
 import { cn } from '../utils';
 
 // --- 摄像头数据结构 ---
@@ -19,77 +19,208 @@ interface CameraData {
   name: string;
   status: 'online' | 'offline';
   location: string;
-  videoFile: string; // 视频文件名
+  videoUrl?: string; // 本地视频路径或AI服务流地址
+}
+
+// --- 检测对象结构 ---
+interface Detection {
+  id: string;
+  label: string;
+  confidence: number;
+  bbox: { x: number; y: number; width: number; height: number };
+  color: string;
 }
 
 // --- 状态管理 ---
-const AI_SERVICE_URL = 'http://localhost:8000';
-
+// 使用本地视频文件（从 resources/videos 复制到 public 目录）
 const cameras = ref<CameraData[]>([
   { 
     id: 1, 
     name: '保育区 - 西南角 #15', 
     status: 'online', 
     location: '保育舍西南',
-    videoFile: '保育-西南角_20250409000000-20250411000000_15.mp4'
+    videoUrl: '/保育-西南角_20250409000000-20250411000000_15.mp4'
   },
   { 
     id: 2, 
     name: '保育区 - 西南角 #23', 
     status: 'online', 
     location: '保育舍西南',
-    videoFile: '保育-西南角_20250409000000-20250411000000_23.mp4'
+    videoUrl: '/保育-西南角_20250409000000-20250411000000_23.mp4'
   },
   { 
     id: 3, 
     name: '保育区 - 东南角 #19', 
     status: 'online', 
     location: '保育舍东南',
-    videoFile: '保育-东南角_20250409000000-20250411000000_19.mp4'
+    videoUrl: '/保育-东南角_20250409000000-20250411000000_19.mp4'
   },
   { 
     id: 4, 
     name: '监控廊道', 
     status: 'offline', 
-    location: '办公区',
-    videoFile: ''
+    location: '办公区'
   }
 ]);
 
 const selectedCamera = ref<CameraData | null>(null);
 const loading = ref(false);
 const currentTime = ref(new Date().toLocaleTimeString());
-const streamUrl = ref('');
-const streamError = ref(false);
-const streamKey = ref(0); // 用于强制刷新img标签
+const isPlaying = ref(false);
+const detections = ref<Detection[]>([]);
+const detectionCount = ref(0);
+
+// Canvas 和 Video 引用
+const videoRef = ref<HTMLVideoElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+let animationFrameId: number | null = null;
+
+// 模拟YOLO检测结果
+const mockDetections: Detection[] = [
+  {
+    id: 'pig_001',
+    label: '生猪',
+    confidence: 0.95,
+    bbox: { x: 100, y: 150, width: 200, height: 180 },
+    color: '#3b82f6'
+  },
+  {
+    id: 'pig_002',
+    label: '生猪',
+    confidence: 0.89,
+    bbox: { x: 400, y: 200, width: 180, height: 160 },
+    color: '#3b82f6'
+  },
+  {
+    id: 'pig_003',
+    label: '生猪',
+    confidence: 0.92,
+    bbox: { x: 650, y: 180, width: 190, height: 170 },
+    color: '#3b82f6'
+  },
+  {
+    id: 'feeder_001',
+    label: '饲料槽',
+    confidence: 0.88,
+    bbox: { x: 50, y: 400, width: 150, height: 100 },
+    color: '#10b981'
+  },
+  {
+    id: 'water_001',
+    label: '饮水器',
+    confidence: 0.91,
+    bbox: { x: 700, y: 420, width: 120, height: 80 },
+    color: '#06b6d4'
+  }
+];
+
+// 绘制检测框
+const drawDetections = () => {
+  if (!canvasRef.value || !videoRef.value) return;
+  
+  const canvas = canvasRef.value;
+  const video = videoRef.value;
+  const ctx = canvas.getContext('2d');
+  
+  if (!ctx) return;
+  
+  // 设置canvas尺寸匹配video
+  canvas.width = video.videoWidth || video.clientWidth;
+  canvas.height = video.videoHeight || video.clientHeight;
+  
+  // 清空画布
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // 绘制每个检测框
+  detections.value.forEach(det => {
+    // 计算缩放比例
+    const scaleX = canvas.width / 1280; // 假设原始分辨率
+    const scaleY = canvas.height / 720;
+    
+    const x = det.bbox.x * scaleX;
+    const y = det.bbox.y * scaleY;
+    const width = det.bbox.width * scaleX;
+    const height = det.bbox.height * scaleY;
+    
+    // 绘制边框
+    ctx.strokeStyle = det.color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, width, height);
+    
+    // 绘制标签背景
+    const label = `${det.label} ${(det.confidence * 100).toFixed(0)}%`;
+    ctx.font = 'bold 14px monospace';
+    const textWidth = ctx.measureText(label).width;
+    
+    ctx.fillStyle = det.color;
+    ctx.fillRect(x, y - 25, textWidth + 10, 25);
+    
+    // 绘制标签文字
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(label, x + 5, y - 7);
+    
+    // 绘制ID标记
+    ctx.fillStyle = det.color + '40'; // 半透明
+    ctx.fillRect(x, y, 30, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px monospace';
+    ctx.fillText(det.id.split('_')[1], x + 5, y + 14);
+  });
+  
+  // 更新检测计数
+  detectionCount.value = detections.value.length;
+};
+
+// 动画循环
+const animate = () => {
+  if (isPlaying.value && videoRef.value && !videoRef.value.paused) {
+    drawDetections();
+  }
+  animationFrameId = requestAnimationFrame(animate);
+};
 
 // 切换摄像头
 const selectCamera = (cam: CameraData) => {
   selectedCamera.value = cam;
-  streamError.value = false;
+  isPlaying.value = false;
+  detections.value = [];
   
-  if (cam.status === 'online' && cam.videoFile) {
-    // 构建AI服务的MJPEG流URL
-    streamUrl.value = `${AI_SERVICE_URL}/api/v1/perception/stream/${encodeURIComponent(cam.videoFile)}`;
-    streamKey.value++; // 强制刷新
+  if (cam.status === 'online' && cam.videoUrl) {
+    // 模拟加载检测数据
+    setTimeout(() => {
+      detections.value = mockDetections;
+    }, 500);
+  }
+};
+
+// 播放/暂停控制
+const togglePlay = () => {
+  if (!videoRef.value) return;
+  
+  if (isPlaying.value) {
+    videoRef.value.pause();
+    isPlaying.value = false;
   } else {
-    streamUrl.value = '';
+    videoRef.value.play();
+    isPlaying.value = true;
   }
 };
 
-// 刷新视频流
-const refreshStream = () => {
-  if (selectedCamera.value) {
-    streamKey.value++;
-    streamError.value = false;
+// 视频加载完成
+const onVideoLoaded = () => {
+  if (canvasRef.value && videoRef.value) {
+    canvasRef.value.width = videoRef.value.videoWidth;
+    canvasRef.value.height = videoRef.value.videoHeight;
   }
 };
 
-// 处理流加载错误
-const handleStreamError = () => {
-  streamError.value = true;
-  console.error('视频流加载失败:', streamUrl.value);
-};
+// 监听选中摄像头变化
+watch(selectedCamera, (newCam) => {
+  if (newCam && videoRef.value) {
+    videoRef.value.load();
+    isPlaying.value = false;
+  }
+});
 
 onMounted(() => {
   // 默认选中第一个在线摄像头
@@ -98,10 +229,19 @@ onMounted(() => {
     selectCamera(firstOnline);
   }
   
+  // 启动动画循环
+  animate();
+  
   // HUD 时钟每秒更新
   setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString();
   }, 1000);
+});
+
+onUnmounted(() => {
+  if (animationFrameId) {
+    cancelAnimationFrame(animationFrameId);
+  }
 });
 </script>
 
@@ -141,7 +281,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 右侧：视频播放器 -->
+    <!-- 右侧：视频播放器与检测可视化 -->
     <div class="flex-1 bg-black rounded-none border border-slate-800 overflow-hidden relative group shadow-none flex flex-col justify-center">
       <template v-if="selectedCamera">
         <!-- HUD: 录制状态 -->
@@ -154,18 +294,10 @@ onMounted(() => {
           感知引擎: YOLOv10-M | {{ currentTime }}
         </div>
         
-        <!-- HUD: AI服务状态 -->
+        <!-- HUD: 检测统计 -->
         <div class="absolute top-16 right-4 bg-blue-600/20 text-blue-400 text-[10px] font-bold px-2 py-1 border border-blue-500/30 z-20 uppercase tracking-widest backdrop-blur-sm">
-          AI服务: {{ streamError ? '连接失败' : '正常' }}
+          检测对象: {{ detectionCount }} 个
         </div>
-
-        <!-- HUD: 刷新按钮 -->
-        <button 
-          @click="refreshStream"
-          class="absolute top-28 right-4 bg-slate-800/80 hover:bg-slate-700 text-white text-[10px] font-bold px-2 py-1 border border-slate-600 z-20 uppercase tracking-widest backdrop-blur-sm flex items-center gap-1 transition-colors"
-        >
-          <RefreshCw class="w-3 h-3" /> 刷新
-        </button>
 
         <div class="w-full h-full flex items-center justify-center bg-slate-950 relative overflow-hidden">
            <!-- 背景装饰：精密网格 -->
@@ -174,31 +306,31 @@ onMounted(() => {
            <!-- 画面特效：CRT 扫描线 -->
            <div class="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,255,0,0.03))] bg-[size:100%_4px,3px_100%] pointer-events-none z-30"></div>
 
-          <!-- 核心：MJPEG视频流（已包含YOLO检测框） -->
-          <div v-if="streamUrl && !streamError" class="relative w-full h-full flex items-center justify-center z-10">
-              <img 
-                :key="streamKey"
-                :src="streamUrl" 
+          <!-- 核心：视频流 + Canvas检测层 -->
+          <div v-if="selectedCamera.videoUrl" class="relative w-full h-full flex items-center justify-center z-10">
+              <!-- 视频层 -->
+              <video 
+                ref="videoRef"
                 class="max-w-full max-h-full object-contain"
-                alt="实时AI检测视频流"
-                @error="handleStreamError"
-              />
-          </div>
-          
-          <!-- 错误提示 -->
-          <div v-else-if="streamError" class="text-center z-10">
-              <Video class="w-16 h-16 mx-auto mb-4 opacity-20 text-red-500" />
-              <span class="text-xl font-mono text-red-600 uppercase tracking-widest block">AI服务连接失败</span>
-              <p class="text-[10px] text-slate-700 mt-2 font-mono">请确保AI服务已启动: python ai-service/main.py</p>
-              <button 
-                @click="refreshStream"
-                class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold uppercase tracking-widest border border-blue-500 transition-colors"
+                @loadedmetadata="onVideoLoaded"
+                @play="isPlaying = true"
+                @pause="isPlaying = false"
+                @error="(e) => console.error('视频加载失败:', e, selectedCamera?.videoUrl)"
+                muted
+                loop
+                autoplay
               >
-                重试连接
-              </button>
+                <source :src="selectedCamera.videoUrl" type="video/mp4" />
+                您的浏览器不支持视频播放
+              </video>
+              
+              <!-- Canvas检测层 -->
+              <canvas 
+                ref="canvasRef"
+                class="absolute top-0 left-0 w-full h-full pointer-events-none"
+                style="object-fit: contain;"
+              ></canvas>
           </div>
-          
-          <!-- 离线提示 -->
           <div v-else class="text-center z-10">
               <Video class="w-16 h-16 mx-auto mb-4 opacity-20 text-slate-500" />
               <span class="text-xl font-mono text-slate-600 uppercase tracking-widest block">信号丢失 / NO SIGNAL</span>
@@ -210,11 +342,12 @@ onMounted(() => {
         <div class="absolute bottom-0 left-0 right-0 bg-slate-900/90 border-t border-slate-800 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-20">
           <div class="flex items-center justify-center space-x-4">
             <button 
-              @click="refreshStream"
+              @click="togglePlay"
               class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold uppercase tracking-widest border border-slate-600 transition-colors flex items-center"
             >
-              <RefreshCw class="w-4 h-4 mr-2" />
-              刷新流
+              <Play v-if="!isPlaying" class="w-4 h-4 mr-2" />
+              <Pause v-else class="w-4 h-4 mr-2" />
+              {{ isPlaying ? '暂停' : '播放' }}
             </button>
             <button class="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold uppercase tracking-widest border border-slate-600 transition-colors flex items-center">
               <CircleDot class="w-4 h-4 mr-2 text-red-500" /> 取证录制

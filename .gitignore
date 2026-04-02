@@ -291,6 +291,11 @@ data/
 *.flv
 *.wmv
 
+# Frontend public videos
+frontend/public/*.mp4
+frontend/public/*.avi
+frontend/public/*.mov
+
 # ==================== Temporary Files ====================
 *.tmp
 *.temp

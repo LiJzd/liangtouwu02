@@ -62,6 +62,8 @@ from v1.common.config import get_settings
 
 # 延迟导入的 YOLO 模型单例，避免应用启动时因加载大模型导致超时
 _yolo_model = None
+_id_model = None  # ID识别模型
+_detection_model = None  # 检测模型（jiance）
 
 # YOLOv10 兼容性补丁：由于 YOLOv10 引入了端到端 (NMS-free) 的结构，
 # 在不同版本的 ultralytics 库中其内部类名（如 v10Detect, E2ELoss）可能存在命名差异。
@@ -137,6 +139,44 @@ def get_yolo_model():
                 detail=f"AI 模型服务未就绪，无法进行推理: {str(e)}"
             )
     return _yolo_model
+
+
+def get_id_model():
+    """获取ID识别模型单例"""
+    global _id_model
+    if _id_model is None:
+        try:
+            from ultralytics import YOLO
+            id_model_path = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), 
+                "../../../resources/models/ID models/id_best.pt"
+            ))
+            logger.info(f"正在加载 ID 识别模型: {id_model_path}")
+            _id_model = YOLO(id_model_path)
+            logger.info("ID 识别模型加载成功")
+        except Exception as e:
+            logger.error(f"ID 模型加载失败: {str(e)}")
+            _id_model = None
+    return _id_model
+
+
+def get_detection_model():
+    """获取检测模型单例（jiance）"""
+    global _detection_model
+    if _detection_model is None:
+        try:
+            from ultralytics import YOLO
+            detection_model_path = os.path.abspath(os.path.join(
+                os.path.dirname(__file__), 
+                "../../../resources/models/ID models/jiance_best.pt"
+            ))
+            logger.info(f"正在加载检测模型: {detection_model_path}")
+            _detection_model = YOLO(detection_model_path)
+            logger.info("检测模型加载成功")
+        except Exception as e:
+            logger.error(f"检测模型加载失败: {str(e)}")
+            _detection_model = None
+    return _detection_model
 
 
 def load_image_from_url(image_url: str) -> np.ndarray:
@@ -381,24 +421,19 @@ def generate_frames(video_path: str):
     
     逻辑说明：
     1. 使用 OpenCV 逐帧读取视频。
-    2. 每帧经过 YOLO 模型进行目标定位。
-    3. 使用 cv2.rectangle 在内存中绘制识别框和标签。
-    4. 将结果帧编码为 JPEG 字节流，并按 MJPEG 标准协议产出。
+    2. YOLO模型检测猪只状态（不同状态不同颜色）。
+    3. 将结果帧编码为 JPEG 字节流。
     """
-    # 设置 OpenCV 日志级别（兼容不同版本）
     try:
         cv2.setLogLevel(0)
     except AttributeError:
-        # OpenCV 4.x 以下版本不支持 setLogLevel
         pass
     
     cap = None
     try:
-        # 使用 suppress_stderr 上下文管理器完全抑制 FFmpeg 警告
         with suppress_stderr():
             cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
             if cap.isOpened():
-                # 尝试设置日志级别属性(某些版本支持)
                 try:
                     cap.set(cv2.CAP_PROP_LOGLEVEL, 0)
                 except:
@@ -407,30 +442,21 @@ def generate_frames(video_path: str):
             logger.error(f"生成器无法打开视频路径: {video_path}")
             return
 
-        model = get_yolo_model()
-        settings = get_settings()
-        names = model.names
+        # 加载YOLO模型
+        yolo_model = get_yolo_model()
         
-        # 定义不同类别的绘制颜色 (B, G, R)
-        colors = [
-            (0, 255, 0),   # 绿色 (可能代表健康状态)
-            (0, 0, 255),   # 红色 (可能代表异常情况)
-            (255, 0, 0),   # 蓝色
-            (0, 255, 255), # 黄色
-            (255, 0, 255), # 紫色
-        ]
+        settings = get_settings()
+        yolo_names = yolo_model.names
         
         frame_count = 0
-        logger.info(f"开始视频流推理: {video_path}")
+        logger.info(f"开始视频流推理（仅状态检测）: {video_path}")
 
         while True:
             try:
-                # 使用 suppress_stderr 抑制读取帧时的 FFmpeg 警告
                 with suppress_stderr():
                     success, frame = cap.read()
                     
                 if not success:
-                    # 实现视频循环播放：当读取到底时，重置读取头
                     logger.info(f"视频播放完毕，重新开始循环")
                     with suppress_stderr():
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -438,38 +464,46 @@ def generate_frames(video_path: str):
 
                 frame_count += 1
                 
-                # 执行推理，开启半精度或降低分辨率可进一步提速
-                results = model(frame, conf=settings.yolo_confidence_threshold, verbose=False)
+                # YOLO状态检测（不同状态不同颜色）
+                yolo_results = yolo_model(frame, conf=settings.yolo_confidence_threshold, verbose=False)
                 
-                # 实时绘制检测框
-                if len(results) > 0:
-                    boxes = results[0].boxes
+                # 状态颜色映射（BGR格式）
+                status_colors = {
+                    0: (0, 255, 0),      # 绿色
+                    1: (255, 0, 0),      # 蓝色
+                    2: (0, 165, 255),    # 橙色
+                    3: (0, 255, 255),    # 黄色
+                    4: (255, 0, 255),    # 品红
+                    5: (255, 255, 0),    # 青色
+                    6: (128, 0, 128),    # 紫色
+                    7: (0, 128, 255),    # 橙红
+                }
+                
+                # 绘制YOLO状态检测框（不同状态不同颜色）
+                if len(yolo_results) > 0 and yolo_results[0].boxes is not None:
+                    boxes = yolo_results[0].boxes
                     for box in boxes:
                         xyxy = box.xyxy[0].cpu().numpy()
                         x1, y1, x2, y2 = map(int, xyxy)
                         
                         cls_id = int(box.cls[0])
-                        cls_name = names[cls_id]
+                        status = yolo_names.get(cls_id, f"状态-{cls_id}")
                         conf = float(box.conf[0])
                         
-                        # 绘制矩形边框（加粗）
-                        color = colors[cls_id % len(colors)]
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 4)  # 边框加粗到 4 像素
+                        # 根据状态类别选择颜色
+                        status_color = status_colors.get(cls_id, (0, 255, 0))
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), status_color, 4)
                         
-                        # 绘制标签文字（超大超清晰）
-                        label = f"{cls_name} {conf:.2f}"
-                        font_scale = 1.5  # 更大的字体
-                        font_thickness = 3  # 更粗的字体
+                        label = f"{status} {conf:.2f}"
+                        font_scale = 1.5
+                        font_thickness = 3
                         t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)[0]
                         
-                        # 绘制半透明标签背景（更大的背景框）
                         padding = 15
-                        cv2.rectangle(frame, (x1, y1 - t_size[1] - padding), (x1 + t_size[0] + padding, y1), color, -1)
-                        
-                        # 叠加文字（白色，加粗，抗锯齿）
+                        cv2.rectangle(frame, (x1, y1 - t_size[1] - padding), (x1 + t_size[0] + padding, y1), status_color, -1)
                         cv2.putText(frame, label, (x1 + 8, y1 - 8), 
                                    cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness, 
-                                   cv2.LINE_AA)  # 使用抗锯齿使文字更清晰
+                                   cv2.LINE_AA)
 
                 # 编码为 JPEG 字节流
                 ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -478,11 +512,9 @@ def generate_frames(video_path: str):
                     continue
                 
                 frame_bytes = buffer.tobytes()
-                # 构建 MJPEG 协议数据块：--frame 分隔符 + Content-Type + 数据内容
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
                 
-                # 控制识别频率，减轻 CPU/GPU 压力
                 time.sleep(0.03)  # 约 30 FPS
                 
             except Exception as e:

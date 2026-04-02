@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
 import { 
-  Bot, User, Send, Image as ImageIcon, Mic, StopCircle, 
-  Paperclip, MoreHorizontal, Info, Loader2, X, Trash2
+  Bot, Send, Image as ImageIcon, Mic, 
+  Paperclip, Loader2, X, Trash2,
+  Signal, Wifi, Battery, UploadCloud
 } from 'lucide-vue-next';
 import { apiService } from './api'
 
@@ -20,6 +21,11 @@ const inputMessage = ref('');
 const isSending = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
+const currentTime = ref(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+
+// 挂载图片相关
+const selectedImage = ref<string | null>(null);
+const isDragging = ref(false);
 
 // 录音相关
 const isRecording = ref(false);
@@ -29,11 +35,16 @@ const recordingTime = ref(0);
 const recordingInterval = ref<number | null>(null);
 
 onMounted(() => {
+  // 更新状态栏时间
+  setInterval(() => {
+    currentTime.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }, 30000);
+
   // 欢迎语
   messages.value.push({
     id: 'welcome',
     role: 'assistant',
-    content: '你好！我是您的两头乌专属智能助手 PigBOT 🐽。现在我已经独立出来啦！不论是上传现场图片还是直接对我说语音，我都能为您提供专业的诊断建议！',
+    content: '你好！我是您的两头乌专属智能助手 PigBOT 🐽。现在我已经支持【拖拽上传图片】和【图文合并发送】啦！你可以把照片直接拖进手机框里。',
     timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   });
 });
@@ -45,10 +56,11 @@ const scrollToBottom = async () => {
   }
 };
 
-const handleSend = async (imageB64?: string, manualText?: string) => {
-  const text = manualText || inputMessage.value.trim();
-  if (!text && !imageB64) return;
-  
+const handleSend = async (manualImage?: string, manualText?: string) => {
+  const text = manualText !== undefined ? manualText : inputMessage.value.trim();
+  const imageToSend = manualImage || selectedImage.value;
+
+  if (!text && !imageToSend) return;
   if (isSending.value) return;
 
   const newUserMsgId = Date.now().toString();
@@ -59,11 +71,13 @@ const handleSend = async (imageB64?: string, manualText?: string) => {
     id: newUserMsgId,
     role: 'user',
     content: text,
-    image: imageB64,
+    image: imageToSend || undefined,
     timestamp: timeStr
   });
 
+  // 清除挂载状态
   inputMessage.value = '';
+  selectedImage.value = null;
   isSending.value = true;
   await scrollToBottom();
 
@@ -84,15 +98,12 @@ const handleSend = async (imageB64?: string, manualText?: string) => {
       .slice(-10)
       .map(m => ({ role: m.role, content: m.content }));
 
-    const urls = imageB64 ? [imageB64] : [];
+    const urls = imageToSend ? [imageToSend] : [];
     
-    // 3. 调用 AI 接口
     const data = await apiService.chat(history, urls);
 
-    // 移除 typing
     messages.value = messages.value.filter(m => m.id !== typingMsgId);
     
-    // 4. 展示回复
     messages.value.push({
       id: Date.now().toString(),
       role: 'assistant',
@@ -115,22 +126,41 @@ const handleSend = async (imageB64?: string, manualText?: string) => {
   }
 };
 
-// --- 图片上传 ---
+// --- 图片处理核心逻辑 ---
+const processFile = (file: File) => {
+  if (!file.type.startsWith('image/')) {
+    alert('只支持上传图片格式哦！');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    selectedImage.value = e.target?.result as string;
+  };
+  reader.readAsDataURL(file);
+};
+
+const onDrop = (e: DragEvent) => {
+  isDragging.value = false;
+  const file = e.dataTransfer?.files?.[0];
+  if (file) processFile(file);
+};
+
+const onDragOver = () => {
+  isDragging.value = true;
+};
+
 const triggerImageUpload = () => {
   fileInput.value?.click();
 };
 
 const onFileChange = (e: Event) => {
   const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const b64 = event.target?.result as string;
-    handleSend(b64, inputMessage.value || '帮我分析一下这张照片。');
-  };
-  reader.readAsDataURL(file);
+  if (file) processFile(file);
   if (fileInput.value) fileInput.value.value = '';
+};
+
+const removeSelectedImage = () => {
+  selectedImage.value = null;
 };
 
 // --- 语音录制 ---
@@ -146,10 +176,7 @@ const startRecording = async () => {
 
     mediaRecorder.value.onstop = async () => {
       const audioBlob = new Blob(audioChunks.value, { type: 'audio/webm' });
-      // 停止所有轨道
       stream.getTracks().forEach(track => track.stop());
-      
-      // 上传转文字
       await processVoice(audioBlob);
     };
 
@@ -204,231 +231,257 @@ const clearChat = () => {
 </script>
 
 <template>
-  <div class="h-screen w-full bg-[#f0f2f5] p-4 flex items-center justify-center font-sans overflow-hidden">
-    <!-- 独立应用容器 -->
-    <div class="w-full h-full max-w-6xl bg-white shadow-2xl rounded-[2rem] flex overflow-hidden ring-1 ring-black/5 relative">
-      
-      <!-- 侧边导航 (QQ-like) -->
-      <aside class="w-20 bg-slate-800 flex flex-col items-center py-8 gap-10 shrink-0">
-        <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-sky-400 shadow-md">
-          <img src="https://ui-avatars.com/api/?name=User&background=0284c7&color=fff" alt="avatar" />
-        </div>
-        <div class="flex flex-col gap-8 text-slate-400">
-          <Bot class="w-7 h-7 text-sky-400" />
-          <User class="w-7 h-7 hover:text-white transition-colors cursor-pointer" />
-          <Info class="w-7 h-7 hover:text-white transition-colors cursor-pointer" />
-        </div>
-        <div class="mt-auto mb-4">
-          <Trash2 @click="clearChat" class="w-6 h-6 text-slate-600 hover:text-red-400 transition-colors cursor-pointer" />
-        </div>
-      </aside>
+  <div class="h-screen w-full bg-[#e8eaf0] flex items-center justify-center font-sans overflow-hidden p-4">
+    <!-- 桌面侧边背景 -->
+    <div class="hidden xl:flex flex-col w-72 mr-12 space-y-6 opacity-80 animate-in fade-in slide-in-from-left-8 duration-700">
+      <div class="bg-white/50 backdrop-blur-lg p-6 rounded-3xl border border-white/40 shadow-sm">
+        <h3 class="text-slate-800 font-black text-lg mb-2">PigBOT Pro</h3>
+        <p class="text-slate-500 text-xs leading-relaxed">独立版多模态智能兽医助手，采用先进的生猪生理识别链路。支持图片拖拽挂载与全维度会诊。</p>
+      </div>
+      <div class="flex items-center gap-4 px-4 py-3 bg-sky-50/50 rounded-2xl border border-sky-100 text-xs text-sky-700 font-bold">
+         <UploadCloud class="w-5 h-5"/>
+         <span>支持直接将图片拖入手机框</span>
+      </div>
+    </div>
 
-      <!-- 聊天主窗口 -->
-      <main class="flex-1 flex flex-col bg-[#f5f6fa] relative">
-        <!-- Header -->
-        <header class="h-20 bg-white/70 backdrop-blur-md px-10 flex items-center justify-between border-b border-slate-100 z-10">
-          <div class="flex items-center gap-4">
-            <div class="relative">
-              <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-400 to-blue-600 flex items-center justify-center text-white shadow-lg">
-                <Bot class="w-7 h-7" />
-              </div>
-              <span class="absolute bottom-1 right-0 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
-            </div>
-            <div>
-              <h1 class="text-xl font-bold text-slate-800">PigBOT 专家对话站</h1>
-              <p class="text-xs text-slate-500 font-medium">视觉分析 · 语音会诊 · 独立版</p>
-            </div>
+    <!-- 手机外框容器 -->
+    <div class="phone-frame relative shadow-[0_50px_100px_-20px_rgba(0,0,0,0.3)] animate-in zoom-in-95 duration-500">
+      <div class="phone-case"></div>
+      <div class="phone-button-power"></div>
+      <div class="phone-button-volume-up"></div>
+      <div class="phone-button-volume-down"></div>
+      <div class="phone-button-silent"></div>
+
+      <!-- 手机屏幕 -->
+      <div 
+        class="phone-screen overflow-hidden bg-[#f8f9fc] flex flex-col relative"
+        @dragover.prevent="onDragOver"
+        @dragleave.prevent="isDragging = false"
+        @drop.prevent="onDrop"
+      >
+        <!-- 拖拽覆盖层 -->
+        <div v-if="isDragging" class="absolute inset-0 z-[100] bg-sky-500/10 backdrop-blur-[2px] border-4 border-dashed border-sky-400 m-4 rounded-[2.5rem] flex items-center justify-center pointer-events-none transition-all">
+          <div class="bg-white p-6 rounded-3xl shadow-xl flex flex-col items-center gap-3">
+             <UploadCloud class="w-10 h-10 text-sky-500 animate-bounce" />
+             <span class="text-sky-600 font-black">松手以挂载图片</span>
           </div>
-          <div class="flex gap-4">
-             <button class="p-3 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors text-slate-500">
-               <MoreHorizontal class="w-6 h-6" />
-             </button>
+        </div>
+        
+        <!-- 状态栏 -->
+        <div class="h-12 w-full px-8 flex justify-between items-center text-[11px] font-bold text-slate-800 select-none z-50">
+          <div class="flex items-center space-x-1">
+             <span class="mr-1 mt-0.5">{{ currentTime }}</span>
+             <Wifi class="w-3 h-3"/>
           </div>
+          <div class="absolute left-1/2 -translate-x-1/2 top-3 w-24 h-6 bg-black rounded-[1.5rem] flex items-center justify-center">
+            <div class="w-1.5 h-1.5 rounded-full bg-[#1c1c1e] mr-1"></div>
+            <div class="w-5 h-1 bg-white/10 rounded-full"></div>
+          </div>
+          <div class="flex items-center space-x-1.5">
+             <Signal class="w-3 h-3"/>
+             <span class="opacity-80">5G</span>
+             <Battery class="w-3.5 h-3.5 fill-slate-800"/>
+          </div>
+        </div>
+
+        <header class="pt-2 pb-4 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-slate-100/50 z-40">
+          <div class="flex items-center gap-3">
+             <div class="w-10 h-10 rounded-[1.2rem] bg-gradient-to-tr from-sky-400 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                <Bot class="w-6 h-6" />
+             </div>
+             <div>
+                <h1 class="text-sm font-black text-slate-800 flex items-center gap-1.5">PigBOT 🐷</h1>
+                <p class="text-[9px] text-emerald-500 font-bold flex items-center gap-1">会诊专家在线</p>
+             </div>
+          </div>
+          <button @click="clearChat" class="p-2.5 rounded-2xl bg-slate-50 text-slate-400 hover:text-red-400 transition-colors">
+             <Trash2 class="w-4 h-4" />
+          </button>
         </header>
 
-        <!-- Messages Area -->
-        <div 
-          ref="chatContainer"
-          class="flex-1 overflow-y-auto p-10 space-y-8 scroll-smooth"
-        >
-          <div 
-            v-for="msg in messages" 
-            :key="msg.id"
-            :class="[
-              'flex w-full animate-in fade-in slide-in-from-bottom-3 duration-500',
-              msg.role === 'user' ? 'justify-end' : 'justify-start'
-            ]"
-          >
-            <!-- Assistant Avatar -->
-            <div v-if="msg.role === 'assistant'" class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white shrink-0 mr-4 shadow-sm">
-              <Bot class="w-6 h-6" />
+        <!-- 聊天区域 -->
+        <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth bg-slate-50/50">
+          <div v-for="msg in messages" :key="msg.id" 
+               :class="['flex w-full group animate-in slide-in-from-bottom-2 duration-300', msg.role === 'user' ? 'justify-end' : 'justify-start']">
+            <div v-if="msg.role === 'assistant'" class="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shrink-0 mr-2 mt-1 shadow-sm">
+               <Bot class="w-5 h-5" />
             </div>
-
-            <div :class="['flex flex-col max-w-[65%]', msg.role === 'user' ? 'items-end' : 'items-start']">
-              <div class="text-[11px] text-slate-400 mb-2 px-1 ont-mono">
-                {{ msg.role === 'assistant' ? 'PigBOT' : 'ME' }} • {{ msg.timestamp }}
-              </div>
-              
-              <div 
-                :class="[
-                  'px-5 py-3.5 rounded-[1.5rem] shadow-sm text-sm/relaxed relative group',
-                  msg.role === 'user' 
-                    ? 'bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-tr-sm' 
-                    : 'bg-white text-slate-700 rounded-tl-sm ring-1 ring-slate-100'
-                ]"
-              >
-                <!-- Text -->
-                <div v-if="!msg.isTyping" class="whitespace-pre-wrap select-text">{{ msg.content }}</div>
-                
-                <!-- Image Attach -->
-                <div v-if="msg.image" class="mt-3 rounded-2xl overflow-hidden border border-white/20 shadow-md">
-                   <img :src="msg.image" class="max-w-[320px] h-auto object-contain" alt="attach" />
+            <div :class="['flex flex-col', msg.role === 'user' ? 'items-end' : 'items-start', 'max-w-[85%]', msg.role === 'user' ? 'min-w-[40px]' : '']">
+              <div :class="[
+                'px-4 py-3 rounded-2xl shadow-sm text-[13px]/relaxed relative overflow-hidden',
+                msg.role === 'user' ? 'bg-sky-500 text-white rounded-tr-sm' : 'bg-white text-slate-700 rounded-tl-sm ring-1 ring-slate-100'
+              ]">
+                <div v-if="msg.image" class="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-sm">
+                   <img :src="msg.image" class="w-full h-auto max-h-[300px] object-cover" alt="attach" />
                 </div>
-
-                <!-- Typing Dots -->
-                <div v-if="msg.isTyping" class="flex gap-2 items-center h-5 w-12 justify-center">
-                  <div class="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                  <div class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                  <div class="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
+                <div v-if="!msg.isTyping" class="whitespace-pre-wrap">{{ msg.content }}</div>
+                <div v-if="msg.isTyping" class="flex gap-1.5 items-center py-1">
+                  <div class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce [animation-delay:-0.32s]"></div>
+                  <div class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce [animation-delay:-0.16s]"></div>
+                  <div class="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce"></div>
                 </div>
               </div>
-            </div>
-
-            <!-- User Avatar -->
-            <div v-if="msg.role === 'user'" class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 shrink-0 ml-4 shadow-sm ring-2 ring-white">
-              <User class="w-6 h-6" />
+              <span class="text-[9px] text-slate-300 mt-1.5 px-2 font-medium">{{ msg.timestamp }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Footer Input Area -->
-        <footer class="bg-white border-t border-slate-100 p-6">
-          <!-- Utils -->
-          <div class="flex items-center gap-2 mb-4">
-             <button 
-              @click="triggerImageUpload"
-              class="p-2.5 rounded-xl hover:bg-sky-50 text-slate-500 hover:text-sky-600 transition-all flex items-center gap-2 text-xs font-semibold"
-             >
-               <ImageIcon class="w-5 h-5" /> 图片
-             </button>
-             <button 
-              @click="isRecording ? stopRecording() : startRecording()"
-              :class="[
-                'p-2.5 rounded-xl transition-all flex items-center gap-2 text-xs font-semibold',
-                isRecording ? 'bg-red-50 text-red-600' : 'hover:bg-emerald-50 text-slate-500 hover:text-emerald-600'
-              ]"
-             >
-               <component :is="isRecording ? StopCircle : Mic" class="w-5 h-5" />
-               {{ isRecording ? '松开结束 (' + formatDuration(recordingTime) + ')' : '语音' }}
-             </button>
-             <button class="p-2.5 rounded-xl hover:bg-slate-50 text-slate-500 transition-all">
-               <Paperclip class="w-5 h-5" />
-             </button>
+        <!-- 录制遮罩 -->
+        <div v-if="isRecording" class="absolute inset-0 bg-white/95 backdrop-blur-xl z-[60] flex flex-col items-center justify-center p-10 animate-in fade-in zoom-in-95 duration-300">
+           <div class="w-24 h-24 rounded-full bg-red-50 flex items-center justify-center mb-8 relative">
+              <div class="absolute inset-0 bg-red-500 rounded-full animate-ping opacity-10"></div>
+              <Mic class="w-10 h-10 text-red-500" />
+           </div>
+           <h4 class="text-red-500 font-black text-xl mb-2">{{ formatDuration(recordingTime) }}</h4>
+           <div class="mt-12 flex gap-4 w-full">
+              <button @click="stopRecording" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-4 rounded-[1.5rem] font-bold shadow-lg transition-all active:scale-95">完成录音</button>
+              <button @click="isRecording = false; stopRecording()" class="p-4 bg-slate-100 text-slate-400 rounded-[1.5rem] hover:bg-slate-200 transition-colors"><X/></button>
+           </div>
+        </div>
+
+        <!-- 底部输入栏 -->
+        <footer class="bg-white px-5 pt-3 pb-8 border-t border-slate-100 relative shadow-2xl transition-all duration-300">
+          <!-- 图片挂载预览区 -->
+          <div v-if="selectedImage" class="mb-4 animate-in slide-in-from-bottom-4 zoom-in-95 duration-300">
+             <div class="relative w-24 h-24 group">
+                <img :src="selectedImage" class="w-full h-full object-cover rounded-2xl ring-1 ring-slate-100 shadow-md transition-transform group-hover:scale-95" />
+                <button 
+                  @click="removeSelectedImage" 
+                  class="absolute -top-2 -right-2 w-7 h-7 bg-white/90 backdrop-blur shadow-lg rounded-full flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-all ring-1 ring-slate-100"
+                >
+                  <X class="w-4 h-4" />
+                </button>
+                <div class="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 rounded-2xl pointer-events-none transition-opacity"></div>
+             </div>
           </div>
 
-          <div class="flex items-end gap-4 px-1 relative">
-            <input 
-              type="file" 
-              ref="fileInput" 
-              class="hidden" 
-              accept="image/*" 
-              @change="onFileChange" 
-            />
-            
-            <div class="flex-1 bg-slate-50 rounded-[1.5rem] p-1.5 ring-1 ring-slate-200 focus-within:ring-sky-400 focus-within:bg-white transition-all">
-              <textarea 
-                v-model="inputMessage"
-                @keydown.enter.prevent="handleSend()"
-                placeholder="在此输入您的会诊需求或建议..."
-                class="w-full bg-transparent border-none focus:ring-0 resize-none h-14 py-2 px-4 text-sm text-slate-800"
-              ></textarea>
+          <div class="flex items-center gap-3 mb-3">
+             <button @click="triggerImageUpload" class="p-2.5 rounded-xl bg-slate-50 text-slate-400 active:bg-sky-50 active:text-sky-500 transition-colors shadow-sm"><ImageIcon class="w-5 h-5"/></button>
+             <button @click="startRecording" class="p-2.5 rounded-xl bg-slate-50 text-slate-400 active:bg-red-50 active:text-red-500 transition-colors shadow-sm"><Mic class="w-5 h-5"/></button>
+             <div class="w-px h-4 bg-slate-100 mx-1"></div>
+             <button class="p-2.5 rounded-xl bg-slate-50 text-slate-400 shadow-sm"><Paperclip class="w-5 h-5"/></button>
+          </div>
+          
+          <div class="flex items-end gap-3">
+            <input type="file" ref="fileInput" class="hidden" accept="image/*" @change="onFileChange" />
+            <div class="flex-1 bg-slate-50 rounded-2xl ring-1 ring-slate-100 focus-within:ring-sky-400 focus-within:bg-white transition-all overflow-hidden group shadow-inner">
+               <textarea v-model="inputMessage" @keydown.enter.prevent="handleSend()" placeholder="输入会诊信息或询问图片内容..."
+                         class="w-full bg-transparent border-none focus:ring-0 resize-none h-12 py-3 px-4 text-sm text-slate-800 placeholder:text-slate-300"></textarea>
             </div>
-
-            <button 
-              @click="handleSend()"
-              :disabled="(!inputMessage.trim() && !isSending) || isSending"
-              class="w-14 h-14 bg-sky-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-sky-600 disabled:opacity-30 disabled:scale-90 transition-all"
-            >
-               <Send v-if="!isSending" class="w-6 h-6 ml-1" />
-               <Loader2 v-else class="w-6 h-6 animate-spin" />
+            <button @click="handleSend()" :disabled="(!inputMessage.trim() && !selectedImage && !isSending) || isSending"
+                    class="w-12 h-12 bg-sky-500 text-white rounded-2xl flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(14,165,233,0.5)] active:scale-90 disabled:opacity-30 disabled:scale-100 transition-all">
+                <Send v-if="!isSending" class="w-5 h-5" />
+                <Loader2 v-else class="w-5 h-5 animate-spin" />
             </button>
-
-            <!-- Recording Overlay -->
-            <div 
-              v-if="isRecording"
-              class="absolute inset-0 bg-white/95 rounded-[1.5rem] flex items-center px-6 gap-4 animate-in fade-in slide-in-from-top-4 duration-300 z-20 border border-emerald-200"
-            >
-               <div class="flex gap-1.5 items-end h-8">
-                  <div class="w-1.5 bg-emerald-500 animate-pulse h-4"></div>
-                  <div class="w-1.5 bg-emerald-500 animate-pulse h-8 [animation-delay:-0.2s]"></div>
-                  <div class="w-1.5 bg-emerald-500 animate-pulse h-6 [animation-delay:-0.4s]"></div>
-                  <div class="w-1.5 bg-emerald-500 animate-pulse h-10 [animation-delay:-0.1s]"></div>
-               </div>
-               <span class="text-sm font-bold text-emerald-600 tabular-nums">录音中: {{ formatDuration(recordingTime) }}</span>
-               <div class="ml-auto flex gap-2">
-                  <button @click="stopRecording()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg">发送</button>
-                  <button @click="isRecording = false; stopRecording()" class="p-2 bg-slate-100 text-slate-500 rounded-xl hover:bg-red-50 hover:text-red-600"><X class="w-5 h-5"/></button>
-               </div>
-            </div>
           </div>
+
+          <!-- 底部手势条 -->
+          <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-slate-800/10 rounded-full"></div>
         </footer>
-      </main>
 
-      <!-- 右侧信息面板 (Glassmorphism) -->
-      <aside class="w-80 bg-white border-l border-slate-100 hidden lg:flex flex-col">
-        <div class="p-8 space-y-8">
-          <div class="text-center">
-            <h2 class="text-lg font-black text-slate-800">PigBOT 智能内核</h2>
-            <div class="mt-4 flex justify-center">
-               <div class="p-4 bg-sky-50 rounded-3xl ring-8 ring-sky-50/30">
-                 <Bot class="w-10 h-10 text-sky-600" />
-               </div>
-            </div>
-          </div>
-
-          <div class="space-y-6">
-            <div class="p-5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2rem] text-white shadow-xl">
-               <p class="text-[10px] font-bold uppercase tracking-widest opacity-80">当前模式</p>
-               <h3 class="text-lg font-black mt-1">多智能体分群协作</h3>
-               <p class="text-xs mt-3 opacity-90 leading-relaxed font-medium">实时扫描生猪轨迹，融合兽医专家知识库进行高精准、解释性疾病诊断。</p>
-            </div>
-
-            <div class="space-y-4">
-              <h4 class="text-xs font-black text-slate-400 uppercase tracking-widest px-1">支持功能</h4>
-              <div class="space-y-2">
-                <div v-for="f in ['多模态图片识别', '语音听写理解', '生长异常预警', '全量路径研判']" :key="f" 
-                     class="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl text-xs font-bold text-slate-600 ring-1 ring-slate-100">
-                  <div class="w-2 h-2 rounded-full bg-sky-400"></div>
-                  {{ f }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
-
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 滚动条优化 */
+.phone-frame {
+  width: 390px;
+  height: 844px;
+  background: #1c1c1e;
+  border-radius: 4rem;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.phone-screen {
+  width: 100%;
+  height: 100%;
+  border-radius: 3.2rem;
+  position: relative;
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.4);
+}
+
+.phone-case {
+  position: absolute;
+  inset: 0;
+  border: 4px solid #3a3a3c;
+  border-radius: 4rem;
+  pointer-events: none;
+}
+
+.phone-button-power {
+  position: absolute;
+  right: -2px;
+  top: 180px;
+  width: 3px;
+  height: 90px;
+  background: #3a3a3c;
+  border-radius: 0 4px 4px 0;
+}
+
+.phone-button-silent {
+  position: absolute;
+  left: -2px;
+  top: 100px;
+  width: 3px;
+  height: 30px;
+  background: #3a3a3c;
+  border-radius: 4px 0 0 4px;
+}
+
+.phone-button-volume-up, .phone-button-volume-down {
+  position: absolute;
+  left: -2px;
+  width: 3px;
+  height: 60px;
+  background: #3a3a3c;
+  border-radius: 4px 0 0 4px;
+}
+
+.phone-button-volume-up { top: 160px; }
+.phone-button-volume-down { top: 235px; }
+
 div::-webkit-scrollbar {
-  width: 6px;
-}
-div::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.08);
-  border-radius: 10px;
-}
-div::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.15);
+  width: 0px;
 }
 
 textarea {
-  min-height: 56px;
+  line-height: 1.5;
 }
 
-.select-text {
-  user-select: text;
+@media (max-height: 900px) {
+  .phone-frame {
+    transform: scale(0.9);
+  }
+}
+
+@media (max-height: 800px) {
+  .phone-frame {
+    transform: scale(0.8);
+  }
+}
+
+@media (max-width: 500px) {
+  .h-screen {
+    padding: 0;
+  }
+  .phone-frame {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding: 0;
+  }
+  .phone-screen {
+    border-radius: 0;
+  }
+  .phone-button-power, .phone-button-silent, .phone-button-volume-up, .phone-button-volume-down, .phone-case {
+    display: none;
+  }
+  .xl\:flex {
+    display: none !important;
+  }
 }
 </style>
+
+

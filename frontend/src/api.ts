@@ -144,10 +144,10 @@ export const apiService = {
     getCameras: async () => {
         if (USE_REAL_API) {
             const res = await http.get('/cameras');
-            return res.data.data; // 返回实际的摄像头数组
+            return res.data.data || res.data; // 返回实际的摄像头数组
         }
         await delay(600);
-        return mockResponse(MOCK_CAMERAS);
+        return MOCK_CAMERAS;
     },
 
     /** 环境监控：获取温湿度趋势 */
@@ -355,10 +355,9 @@ export const apiService = {
         messages: { role: string; content: any }[],
         imageUrls: string[] = []
     ) => {
-        // AI 后端默认端口是 8000，使用它来做真实接口请求
-        // 如果后端有统一代理可根据需要调整
-        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api' : '/api';
-        const res = await fetch(`${baseUrl}/v1/agent/chat/v2`, {
+        // AI 后端默认端口是 8000，直接调用完整路径
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '';
+        const res = await fetch(`${baseUrl}/api/v1/agent/chat/v2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

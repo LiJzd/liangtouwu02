@@ -2,7 +2,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { apiService } from '../api';
 import { 
-  Bot, User, Send, Image as ImageIcon, Mic, Paperclip, MoreHorizontal, Info 
+  Bot, User, Send, Image as ImageIcon, Mic, Paperclip, MoreHorizontal, Info, Loader2 
 } from 'lucide-vue-next';
 
 interface ChatMessage {
@@ -74,15 +74,15 @@ const handleSend = async (imageB64?: string) => {
 
   try {
     // 构造发送给后端的结构
-    // 为防止内容太长，这里截断了 isTyping 的发送等
+    // 过滤掉 typing 状态的消息，保留完整的对话历史
     const apiMessages = messages.value
-      .filter(m => !m.isTyping && m.role !== 'assistant') // 为简便起见可以只发用户语句，或者全发。这里发最近的几条上下文。
+      .filter(m => !m.isTyping) // 只过滤掉正在输入的消息
       .map(m => ({
         role: m.role,
         content: m.content
       }));
       
-    const recentMessages = apiMessages.slice(-5); // 只取最后 5 条作为上下文
+    const recentMessages = apiMessages.slice(-10); // 取最后 10 条作为上下文（包含用户和助手的对话）
     const urlsToSends = imageB64 ? [imageB64] : [];
 
     // 调用真正后端的 AI 接口
