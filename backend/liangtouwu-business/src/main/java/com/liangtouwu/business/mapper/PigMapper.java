@@ -10,6 +10,7 @@ public interface PigMapper {
     Integer getAverageActivityLevel();
     Double getAverageBodyTemp();
     List<Pig> findAbnormalPigs();
+    List<Pig> findAllPigs();
     
     // ========== AI Tool 专用方法（租户隔离） ==========
     

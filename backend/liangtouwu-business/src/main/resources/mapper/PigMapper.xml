@@ -2,7 +2,33 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <mapper namespace="com.liangtouwu.business.mapper.PigMapper">
     <select id="findAbnormalPigs" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig WHERE score >= 80 OR issue IS NOT NULL
+        SELECT 
+            id,
+            score,
+            issue,
+            body_temp as bodyTemp,
+            activity_level as activityLevel,
+            breed,
+            area,
+            current_weight_kg as currentWeightKg,
+            current_month as currentMonth
+        FROM pig 
+        WHERE score >= 80 OR issue IS NOT NULL
+    </select>
+
+    <select id="findAllPigs" resultType="com.liangtouwu.domain.entity.Pig">
+        SELECT 
+            id,
+            score,
+            issue,
+            body_temp as bodyTemp,
+            activity_level as activityLevel,
+            breed,
+            area,
+            current_weight_kg as currentWeightKg,
+            current_month as currentMonth
+        FROM pig 
+        ORDER BY id
     </select>
 
     <select id="getAverageBodyTemp" resultType="java.lang.Double">
@@ -20,18 +46,48 @@
     -->
 
     <select id="findByUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig
+        SELECT 
+            id,
+            score,
+            issue,
+            body_temp as bodyTemp,
+            activity_level as activityLevel,
+            breed,
+            area,
+            current_weight_kg as currentWeightKg,
+            current_month as currentMonth
+        FROM pig
         ORDER BY score DESC
         LIMIT #{limit}
     </select>
 
     <select id="findByIdAndUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig
+        SELECT 
+            id,
+            score,
+            issue,
+            body_temp as bodyTemp,
+            activity_level as activityLevel,
+            breed,
+            area,
+            current_weight_kg as currentWeightKg,
+            current_month as currentMonth
+        FROM pig
         WHERE id = #{pigId}
     </select>
 
     <select id="findAbnormalByUserId" resultType="com.liangtouwu.domain.entity.Pig">
-        SELECT * FROM pig
+        SELECT 
+            id,
+            score,
+            issue,
+            body_temp as bodyTemp,
+            activity_level as activityLevel,
+            breed,
+            area,
+            current_weight_kg as currentWeightKg,
+            current_month as currentMonth
+        FROM pig
         WHERE (score >= #{threshold} OR issue IS NOT NULL)
         ORDER BY score DESC
         LIMIT #{limit}

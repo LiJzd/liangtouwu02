@@ -1,5 +1,7 @@
 package com.liangtouwu.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -49,7 +51,7 @@ public class Pig {
 
     /**
      * 异常问题简短描述
-     * 用于在列表界面快速提醒兽医，如“疑似高热”、“行动迟缓”等。
+     * 用于在列表界面快速提醒兽医，如"疑似高热"、"行动迟缓"等。
      */
     private String issue;
 
@@ -66,4 +68,45 @@ public class Pig {
      * 反映猪只的运动频率，低活跃度通常是患病的前兆。
      */
     private Integer activityLevel;
+
+    /**
+     * 品种（用于生长曲线分析）
+     */
+    private String breed;
+
+    /**
+     * 所在区域
+     */
+    private String area;
+
+    /**
+     * 当前体重（kg）
+     */
+    @JsonProperty("current_weight_kg")
+    private BigDecimal currentWeightKg;
+
+    /**
+     * 当前月龄
+     */
+    @JsonProperty("current_month")
+    private Integer currentMonth;
+
+    @JsonIgnore
+    public String getId() {
+        return this.id;
+    }
+
+    /**
+     * 获取pigId（用于前端兼容）
+     * 前端期望字段名为pigId，而不是id
+     */
+    @JsonProperty("pigId")
+    public String getPigId() {
+        return this.id;
+    }
+
+    @JsonProperty("pigId")
+    public void setPigId(String pigId) {
+        this.id = pigId;
+    }
 }

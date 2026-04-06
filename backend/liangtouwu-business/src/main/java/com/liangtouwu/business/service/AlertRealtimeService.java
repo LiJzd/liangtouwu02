@@ -18,12 +18,23 @@ public class AlertRealtimeService {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
+        // 设置超时时间为5分钟（300秒），心跳间隔为25秒，足够保持连接
+        SseEmitter emitter = new SseEmitter(300_000L);
         emitters.add(emitter);
 
         emitter.onCompletion(() -> emitters.remove(emitter));
-        emitter.onTimeout(() -> emitters.remove(emitter));
-        emitter.onError(error -> emitters.remove(emitter));
+        emitter.onTimeout(() -> {
+            emitters.remove(emitter);
+            emitter.complete();
+        });
+        emitter.onError(error -> {
+            emitters.remove(emitter);
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+                // 忽略完成时的异常
+            }
+        });
 
         try {
             emitter.send(SseEmitter.event()

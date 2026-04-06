@@ -9,4 +9,5 @@ public interface AnalysisService {
     List<EnvironmentTrend> getTrends();
     List<AreaStats> getAreaStats();
     List<Pig> getAbnormalPigs();
+    List<Pig> getAllPigs();
 }
