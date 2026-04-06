@@ -1,3 +1,32 @@
+"""
+工具注册与管理系统 (Tool Registry & Management System)
+=====================================================
+
+本模块是整个AI服务的"工具箱"，负责定义和管理所有可供智能体调用的工具函数。
+
+核心架构：
+1. 工具注册机制：使用装饰器模式 (@tool) 自动注册工具到全局注册表
+2. 工具调用接口：提供统一的异步调用接口，支持参数解析和错误处理
+3. 工具分类：
+   - 基础工具：时间查询、健康检查等
+   - 数据查询工具：猪只档案、列表查询（通过Java API）
+   - 诊断工具：疾病知识库、环境监测、历史病例检索
+   - 预测工具：生长曲线预测（基于RAG）
+   - 告警工具：异常告警发布与语音播报
+   - 视觉工具：视频截图与AI识别
+
+工具注册流程：
+1. 使用 @tool(name, description) 装饰器标记函数
+2. 装饰器自动将工具注册到 _REGISTRY 全局字典
+3. Agent通过 list_tools() 获取所有可用工具
+4. Agent通过 Tool.handler(arg) 调用具体工具
+
+工具调用约定：
+- 所有工具函数必须是异步函数 (async def)
+- 输入参数统一为字符串类型（支持JSON格式）
+- 返回值统一为字符串类型（通常是JSON格式）
+- 工具内部负责参数解析、类型转换和错误处理
+"""
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +40,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 import httpx
 
+# 动态路径配置：确保可以导入 pig_rag 模块
 _BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _PIG_RAG_DIR = os.path.join(_BASE_DIR, "pig_rag")
 if _PIG_RAG_DIR not in sys.path:
@@ -18,31 +48,76 @@ if _PIG_RAG_DIR not in sys.path:
 
 from pig_lifecycle_rag import query_pig_growth_prediction
 
-# 全局图片缓存（用于临时存储工具生成的图片）
+# ============================================================
+# 全局缓存与配置
+# ============================================================
+
+# 图片缓存：用于临时存储工具生成的图片（Base64编码）
+# 键：图片缓存键（如 "snapshot_video1_timestamp"）
+# 值：Base64编码的图片数据（不含data URI前缀）
 _IMAGE_CACHE: Dict[str, str] = {}
 
 
 def get_cached_image(image_key: str) -> Optional[str]:
-    """从缓存中获取图片"""
+    """
+    从全局缓存中获取图片
+    
+    Args:
+        image_key: 图片缓存键
+    
+    Returns:
+        Base64编码的图片数据，如果不存在则返回None
+    """
     return _IMAGE_CACHE.get(image_key)
 
-# Java 后端 API 配置
-JAVA_API_BASE_URL = os.getenv("JAVA_API_BASE_URL", "http://localhost:8080")
-JAVA_API_TIMEOUT = 30.0
 
+# Java后端API配置
+JAVA_API_BASE_URL = os.getenv("JAVA_API_BASE_URL", "http://localhost:8080")
+JAVA_API_TIMEOUT = 30.0  # 超时时间（秒）
+
+
+# ============================================================
+# 工具注册系统核心数据结构
+# ============================================================
 
 @dataclass(frozen=True)
 class Tool:
+    """
+    工具定义数据类
+    
+    Attributes:
+        name: 工具名称（唯一标识符）
+        description: 工具描述（供LLM理解工具用途）
+        handler: 工具处理函数（异步函数，接收字符串参数，返回字符串结果）
+    """
     name: str
     description: str
     handler: Callable[[str], Awaitable[str]]
 
 
+# 全局工具注册表：存储所有已注册的工具
 _REGISTRY: Dict[str, Tool] = {}
 
 
 def tool(name: str, description: str) -> Callable[[Callable[[str], Awaitable[str]]], Callable[[str], Awaitable[str]]]:
+    """
+    工具注册装饰器
+    
+    使用方法：
+        @tool(name="工具名称", description="工具描述")
+        async def my_tool(arg: str) -> str:
+            # 工具实现
+            return result
+    
+    Args:
+        name: 工具名称（在Agent中调用时使用）
+        description: 工具功能描述（LLM根据此描述决定是否调用该工具）
+    
+    Returns:
+        装饰器函数
+    """
     def decorator(func: Callable[[str], Awaitable[str]]) -> Callable[[str], Awaitable[str]]:
+        # 将工具注册到全局注册表
         _REGISTRY[name] = Tool(name=name, description=description, handler=func)
         return func
 
@@ -50,19 +125,47 @@ def tool(name: str, description: str) -> Callable[[Callable[[str], Awaitable[str
 
 
 def list_tools() -> Dict[str, Tool]:
+    """
+    获取所有已注册的工具
+    
+    Returns:
+        工具字典，键为工具名称，值为Tool对象
+    """
     return dict(_REGISTRY)
 
 
+# ============================================================
+# 工具参数解析辅助函数
+# ============================================================
+
 def _parse_args(text: str) -> Dict[str, Any]:
+    """
+    智能参数解析器：支持多种输入格式
+    
+    支持的格式：
+    1. JSON格式：{"key": "value", "key2": 123}
+    2. 键值对格式：key=value, key2=value2
+    3. 纯文本格式：直接作为参数
+    
+    Args:
+        text: 输入参数字符串
+    
+    Returns:
+        解析后的参数字典
+    """
     raw = (text or "").strip()
     if not raw:
         return {}
+    
+    # 尝试解析为JSON
     if raw.startswith("{") or raw.startswith("["):
         try:
             data = json.loads(raw)
             return data if isinstance(data, dict) else {"_args": data}
         except Exception:
             return {"_raw": raw}
+    
+    # 解析键值对格式（如：key1=value1, key2=value2）
     parts = re.split(r"[,\s]+", raw)
     data: Dict[str, Any] = {}
     for part in parts:
@@ -72,11 +175,21 @@ def _parse_args(text: str) -> Dict[str, Any]:
             key, value = part.split("=", 1)
             data[key.strip()] = value.strip()
         else:
+            # 无键的值存入 _args 列表
             data.setdefault("_args", []).append(part)
     return data
 
 
 def _parse_json_maybe(value: Any) -> Any:
+    """
+    尝试将字符串解析为JSON对象
+    
+    Args:
+        value: 待解析的值
+    
+    Returns:
+        解析后的对象（如果是JSON）或原值
+    """
     if isinstance(value, (dict, list)):
         return value
     if not isinstance(value, str):
@@ -91,25 +204,57 @@ def _parse_json_maybe(value: Any) -> Any:
 
 
 def _coerce_int(value: Any, default: int | None = None) -> int | None:
+    """
+    类型安全的整数转换
+    
+    Args:
+        value: 待转换的值
+        default: 转换失败时的默认值
+    
+    Returns:
+        转换后的整数或默认值
+    """
     try:
         return int(value)
     except Exception:
         return default
 
 
+# ============================================================
+# 基础工具集
+# ============================================================
+
 @tool(name="当前时间", description="返回服务器当前时间")
 async def tool_current_time(_: str) -> str:
+    """
+    获取服务器当前时间
+    
+    Returns:
+        格式化的时间字符串（YYYY-MM-DD HH:MM:SS）
+    """
     now = datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 
 @tool(name="ping", description="健康检查")
 async def tool_ping(_: str) -> str:
+    """
+    系统健康检查工具
+    
+    Returns:
+        "pong" 表示系统正常运行
+    """
     return "pong"
 
 
 @tool(name="list_tools", description="查看当前可用工具列表")
 async def tool_list_tools(_: str) -> str:
+    """
+    列出所有已注册的工具及其描述
+    
+    Returns:
+        工具列表的文本描述
+    """
     tools = list_tools()
     lines = ["可用工具:"]
     for name, tool in tools.items():
@@ -117,16 +262,27 @@ async def tool_list_tools(_: str) -> str:
     return "\n".join(lines)
 
 
+# ============================================================
+# 数据查询工具集（通过Java后端API）
+# ============================================================
+
 @tool(name="list_pigs", description="列出猪场内的猪只列表（通过 Java API）")
 async def tool_list_pigs(arg: str) -> str:
     """
-    调用 Java 后端 API 查询猪只列表
+    查询猪只列表
     
-    参数:
+    调用Java后端API获取猪场内的猪只列表，支持过滤和分页。
+    
+    参数格式（JSON或键值对）：
         limit: 返回数量限制（默认 50）
         abnormal_only: 是否只返回异常猪只（默认 false）
     
-    注意：需要从上下文获取 user_id
+    Returns:
+        JSON格式的猪只列表数据
+    
+    注意：
+        - 需要从上下文获取 user_id（当前使用演示值）
+        - 返回的数据包含猪只ID、品种、健康状态等基础信息
     """
     data = _parse_args(arg)
     limit = _coerce_int(data.get("limit"), 50) if isinstance(data, dict) else 50
@@ -159,13 +315,22 @@ async def tool_list_pigs(arg: str) -> str:
 @tool(name="get_pig_info_by_id", description="查询猪只基础信息与生长周期（通过 Java API）")
 async def tool_get_pig_info_by_id(arg: str) -> str:
     """
-    调用 Java 后端 API 查询猪只详细档案
+    查询猪只详细档案
     
-    参数:
+    根据猪只ID查询完整的档案信息，包括基础信息和生长周期数据。
+    
+    参数格式（JSON或键值对）：
         pig_id: 猪只 ID（必填）
         include_lifecycle: 是否包含生长周期数据（默认 true）
     
-    注意：需要从上下文获取 user_id
+    Returns:
+        JSON格式的猪只详细档案，包含：
+        - 基础信息：品种、区域、当前体重、当前月龄等
+        - 生长周期：每月体重记录（如果 include_lifecycle=true）
+    
+    注意：
+        - 需要从上下文获取 user_id（当前使用演示值）
+        - 生长周期数据用于生成生长曲线和预测
     """
     data = _parse_args(arg)
     pig_id = None

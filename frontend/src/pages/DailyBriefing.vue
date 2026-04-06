@@ -38,7 +38,14 @@ const triggerNew = async () => {
     console.log('简报生成响应:', res);
     if (res) {
       await loadHistory();
-      selectedBriefing.value = res;
+      // 确保选中的简报有content字段
+      if (res.content) {
+        selectedBriefing.value = res;
+      } else {
+        // 如果返回的数据没有content，尝试从历史记录中找到
+        const latest = history.value.find(item => item.id === res.id);
+        selectedBriefing.value = latest || res;
+      }
       console.log('简报生成成功，已更新列表');
     } else {
       console.warn('简报生成返回空数据');
@@ -46,10 +53,11 @@ const triggerNew = async () => {
     }
   } catch (e: any) {
     console.error('简报生成异常:', e);
-    if (e.code === 'ECONNABORTED') {
+    if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
       alert('简报生成超时，请稍后重试。AI 服务可能正在处理大量数据。');
     } else {
-      alert('触发简报生成失败，请检查 AI 端状态');
+      const errorMsg = e.message || e.data?.message || '未知错误';
+      alert(`触发简报生成失败：${errorMsg}\n请检查后端服务状态`);
     }
   } finally {
     triggering.value = false;

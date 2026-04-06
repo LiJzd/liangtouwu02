@@ -43,6 +43,7 @@ openai>=1.0.0
 langchain==0.2.16
 langchain-openai==0.1.25
 langchain-core==0.2.38
+langchain-community==0.2.16
 
 # QQ Bot SDK
 qq-botpy
@@ -53,3 +54,7 @@ dashscope>=1.14.0
 # 向量数据库及配套 LangChain 增强包
 chromadb>=0.4.22
 langchain-chroma>=0.1.2
+
+# 测试工具
+pytest>=8.0.0
+hypothesis>=6.0.0

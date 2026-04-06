@@ -55,32 +55,48 @@ def _format_sse(event: str, data: dict) -> str:
 
 
 def _build_growth_curve_prompt(pig_id: str) -> str:
-    """Ask the data agent for a UI-compatible markdown report."""
+    """Ask the data agent for a UI-compatible markdown report with historical + prediction data."""
     return f"""
-请为猪只 {pig_id} 生成一份“生长曲线预测报告”。
+请为猪只 {pig_id} 生成一份"生长曲线预测报告"。
 
 这是 growth-curve 页面发起的内部请求，必须走 agent 工具链，不要跳过工具直接回答。
 
 执行要求：
-1. 先调用 get_pig_info_by_id 查询该猪只档案。
-2. 再调用 query_pig_growth_prediction，优先使用 {{"pig_id":"{pig_id}"}} 这种入参。
+1. 先调用 get_pig_info_by_id 查询该猪只档案，获取 lifecycle 数据（含喂食/饮水记录）。
+2. 再调用 query_pig_growth_prediction，优先使用 {{"pig_id":"{pig_id}"}} 这种入参，获取未来预测轨迹。
 3. 如果工具返回的是 JSON，请你自己整理成 Markdown，不要把原始 JSON 直接贴给用户。
 
-输出格式必须严格兼容前端：
-1. 先给出该猪只的品种、当前月龄、当前体重。
-2. 再给出 2 到 4 条简短的预测结论。
-3. 必须包含一个标题，标题文字要精确写成：### 预测生长曲线数据 (Monthly)
-4. 标题下面必须输出 Markdown 表格，表头必须是：
+输出格式必须严格按以下结构：
+
+## 基本信息
+- **猪只ID**：{pig_id}
+- **品种**：（从工具结果填写）
+- **当前月龄**：（从工具结果填写）月
+- **当前体重**：（从工具结果填写）kg
+
+## 生长趋势分析
+（2到4条简短的预测结论和建议）
+
+### 历史实测数据 (Historical)
+| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |
+| --- | --- | --- | --- | --- | --- |
+（从 get_pig_info_by_id 返回的 lifecycle 字段逐月填写，有几个月填几行，绝不编造）
+（月份只写数字，体重只写数字，喂食/饮水字段写整数）
+
+### 预测生长曲线数据 (Monthly)
 | 月份 (Month) | 拟合/预测体重 (kg) | 状态 |
 | --- | --- | --- |
-5. 表格第一列只能写数字月份，第二列只能写数字体重，第三列写“当前”或“预测”等状态说明。
-6. 如果 historical_future_track 里有多个月份，请按月份升序整理成单条连续曲线。
+（从 query_pig_growth_prediction 获取，历史月份标注"已记录"，未来月份标注"预测"，当前月标注"当前"；按月份升序排列）
 
-额外要求：
-- 不要返回 JSON。
-- 不要省略表格。
-- 回复使用中文。
-- 如果工具结果不足以覆盖所有月份，就基于已有工具结果输出能确定的月份，不要编造不存在的数据。
+## AI 建议
+（3条针对该猪只当前状态的具体建议，结合喂食/饮水数据给出）
+
+严格要求：
+- 必须同时输出以上两个表格，缺一不可。
+- 不要返回 JSON 格式内容。
+- 所有数字列只写纯数字，不含单位。
+- 回复全程使用中文。
+- lifecycle 有几个月的数据就填几行，不要编造不存在月份的数据。
 """.strip()
 
 

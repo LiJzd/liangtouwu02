@@ -68,12 +68,12 @@ onMounted(async () => {
     const handleResize = () => charts.forEach(c => c.resize());
     window.addEventListener('resize', handleResize);
     window.addEventListener('scroll', onScroll, { passive: true });
-    
-    onUnmounted(() => {
-        window.removeEventListener('scroll', onScroll);
-        window.removeEventListener('resize', handleResize);
-        charts.forEach(c => c.dispose());
-    });
+});
+
+onUnmounted(() => {
+    window.removeEventListener('scroll', onScroll);
+    window.removeEventListener('resize', () => charts.forEach(c => c.resize()));
+    charts.forEach(c => c.dispose());
 });
 
 function initGasTrendChart(el: HTMLElement, name: string, color: string, data: number[], _currentValue: number, unit: string) {

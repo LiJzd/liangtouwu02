@@ -106,11 +106,233 @@ export const MOCK_PIGS_LIST = [
 const USE_REAL_API = import.meta.env.VITE_USE_REAL_API === 'true';
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// 生成模拟简报内容
+function generateMockBriefingContent(date: string, dayOffset: number): string {
+    const healthScores = [92, 88, 95, 90, 87];
+    const avgScore = healthScores[dayOffset % 5];
+    const totalPigs = 145 + (dayOffset % 10);
+    const abnormalCount = Math.floor(Math.random() * 5);
+    const feedConsumption = (1250 + Math.random() * 100).toFixed(1);
+    const waterConsumption = (4800 + Math.random() * 200).toFixed(1);
+    const avgTemp = (38.5 + Math.random() * 0.5).toFixed(1);
+    const envTemp = (22 + Math.random() * 3).toFixed(1);
+    const humidity = (65 + Math.random() * 10).toFixed(0);
+    const ammonia = (8 + Math.random() * 5).toFixed(1);
+    
+    return `# ${date} 两头乌养殖场智能诊断简报
+
+## 📊 整体概况
+
+今日全场运行状态${avgScore >= 90 ? '**优秀**' : avgScore >= 85 ? '**良好**' : '**正常**'}，系统监测到 **${totalPigs}** 头生猪，平均健康评分 **${avgScore}分**。
+
+### 核心指标
+
+- **在栏总数**: ${totalPigs} 头
+- **平均健康评分**: ${avgScore}/100
+- **异常个体**: ${abnormalCount} 头
+- **平均体温**: ${avgTemp}°C
+- **日采食量**: ${feedConsumption} kg
+- **日饮水量**: ${waterConsumption} L
+
+## 🏥 健康状况分析
+
+### 体温监测
+全场平均体温 **${avgTemp}°C**，处于正常范围（38.0-39.5°C）。${abnormalCount > 0 ? `发现 ${abnormalCount} 头猪只体温略有波动，已标记重点观察。` : '所有猪只体温正常。'}
+
+### 活跃度评估
+- 高活跃度: ${Math.floor(totalPigs * 0.7)} 头 (${(70 + Math.random() * 10).toFixed(1)}%)
+- 中等活跃度: ${Math.floor(totalPigs * 0.25)} 头 (${(25 + Math.random() * 5).toFixed(1)}%)
+- 低活跃度: ${Math.floor(totalPigs * 0.05)} 头 (${(5 + Math.random() * 3).toFixed(1)}%)
+
+${abnormalCount > 0 ? `> **重点关注**: 猪舍B区的韦俊其、猪舍A区的李明等个体活跃度偏低，建议加强观察。` : ''}
+
+## 🌡️ 环境监测
+
+### 温湿度
+- **环境温度**: ${envTemp}°C (适宜范围: 18-24°C)
+- **相对湿度**: ${humidity}% (适宜范围: 60-75%)
+
+### 空气质量
+- **氨气浓度**: ${ammonia} ppm (警戒值: 15 ppm)
+- **二氧化碳**: 正常
+- **硫化氢**: 正常
+
+${parseFloat(ammonia) > 12 ? `> **环境提醒**: 氨气浓度略高，建议加强通风。` : ''}
+
+## 🍽️ 饲养管理
+
+### 采食情况
+- **日总采食量**: ${feedConsumption} kg
+- **人均采食量**: ${(parseFloat(feedConsumption) / totalPigs).toFixed(2)} kg/头
+- **采食率**: ${(85 + Math.random() * 10).toFixed(1)}%
+
+### 饮水情况
+- **日总饮水量**: ${waterConsumption} L
+- **人均饮水量**: ${(parseFloat(waterConsumption) / totalPigs).toFixed(2)} L/头
+
+## 📈 生长趋势
+
+根据AI模型分析，当前批次生猪生长曲线符合预期，预计：
+- **平均日增重**: ${(0.6 + Math.random() * 0.2).toFixed(2)} kg
+- **预计出栏时间**: ${120 + Math.floor(Math.random() * 20)} 天后
+- **预计出栏体重**: ${(95 + Math.random() * 10).toFixed(1)} kg
+
+## ⚠️ 异常预警
+
+${abnormalCount > 0 ? `
+今日系统检测到 **${abnormalCount}** 个异常事件：
+
+1. **体温异常** - 猪舍B区韦俊其，体温39.8°C，已通知兽医
+2. **活跃度低** - 猪舍A区李明，活跃度指数32，建议观察
+${abnormalCount > 2 ? '3. **采食减少** - 猪舍C区部分猪只采食量下降15%' : ''}
+
+> 所有异常已自动记录并触发语音播报，相关人员已收到通知。
+` : `
+**无异常事件** - 今日全场运行平稳，未检测到需要人工干预的异常情况。
+`}
+
+## 💡 AI 建议
+
+基于今日数据分析，系统提出以下建议：
+
+1. **环境优化**: ${parseFloat(ammonia) > 10 ? '加强猪舍通风，降低氨气浓度' : '保持当前通风频率'}
+2. **饲养调整**: ${parseFloat(feedConsumption) / totalPigs < 8 ? '适当增加饲料供应' : '维持当前饲喂方案'}
+3. **健康监测**: ${abnormalCount > 0 ? '重点关注标记个体，必要时进行兽医检查' : '继续常规健康巡检'}
+4. **预防措施**: 定期消毒，保持环境卫生
+
+---
+
+*本简报由两头乌智能养殖系统自动生成 | 数据采集时间: ${date} 23:59*
+*AI 分析引擎版本: v2.1.0 | 置信度: ${(92 + Math.random() * 5).toFixed(1)}%*`;
+}
+
 const mockResponse = <T>(data: T): ApiResponse<T> => ({
     code: 200,
     data,
     message: 'Success'
 });
+
+const getMockPig = (pigId: string) =>
+    MOCK_PIGS_LIST.find((pig) => pig.pigId === pigId) || {
+        pigId,
+        breed: '金华两头乌',
+        area: '猪舍A',
+        current_weight_kg: 45,
+        current_month: 4
+    };
+
+// 模拟lifecycle历史数据（每月的喂食/饮水/体重记录）
+const buildMockLifecycle = (pigId: string) => {
+    const pig = getMockPig(pigId);
+    const currentMonth = pig.current_month;
+    // 用固定种子生成稳定的模拟数据
+    const seed = pigId.charCodeAt(pigId.length - 1);
+    return Array.from({ length: currentMonth }, (_, i) => {
+        const month = i + 1;
+        // 体重从出生约15kg开始，每月增长根据品种设定
+        const baseGain = pig.breed === '两头乌' ? 8.5 : pig.breed === '杜洛克' ? 9.5 : 9.0;
+        const weight = Math.round((15 + i * baseGain + (seed % 3)) * 10) / 10;
+        return {
+            month,
+            weight_kg: weight,
+            feed_count: 44 + (month % 5) + (seed % 4),
+            feed_duration_mins: 270 + month * 8 + (seed % 15),
+            water_count: 76 + (month % 4) + (seed % 3),
+            water_duration_mins: 148 + month * 5 + (seed % 10),
+        };
+    });
+};
+
+const buildMockGrowthCurve = (pigId: string) => {
+    const pig = getMockPig(pigId);
+    const currentMonth = pig.current_month;
+    const currentWeight = pig.current_weight_kg;
+    const endMonth = Math.max(currentMonth, 7);
+    const monthlyGain = currentMonth <= 3 ? 18 : currentMonth === 4 ? 16 : 14;
+
+    return Array.from({ length: endMonth - currentMonth + 1 }, (_, index) => {
+        const month = currentMonth + index;
+        const status = index === 0 ? '当前' : month === endMonth ? '建议出栏' : '稳步生长';
+
+        return {
+            month,
+            weight: Math.round((currentWeight + index * monthlyGain) * 10) / 10,
+            status
+        };
+    });
+};
+
+const buildMockPigInspectionReport = (pigId: string) => {
+    const pig = getMockPig(pigId);
+    const curveData = buildMockGrowthCurve(pigId);
+    const lifecycle = buildMockLifecycle(pigId);
+    const lastPoint = curveData[curveData.length - 1];
+    const gain = (lastPoint.weight - pig.current_weight_kg).toFixed(1);
+
+    // 计算采食/饮水均值用于AI建议
+    const avgFeedCount = lifecycle.length > 0
+        ? Math.round(lifecycle.reduce((s, d) => s + d.feed_count, 0) / lifecycle.length)
+        : 0;
+    const avgWaterDuration = lifecycle.length > 0
+        ? Math.round(lifecycle.reduce((s, d) => s + d.water_duration_mins, 0) / lifecycle.length)
+        : 0;
+
+    // 历史实测数据表格（含喂食/饮水6列）
+    const historicalTable = [
+        '### 历史实测数据 (Historical)',
+        '',
+        '| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |',
+        '| --- | --- | --- | --- | --- | --- |',
+        ...lifecycle.map(d =>
+            `| ${d.month} | ${d.weight_kg} | ${d.feed_count} | ${d.feed_duration_mins} | ${d.water_count} | ${d.water_duration_mins} |`
+        )
+    ].join('\n');
+
+    // 预测曲线表格（3列）
+    const predictionTable = [
+        '### 预测生长曲线数据 (Monthly)',
+        '',
+        '| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |',
+        '| --- | --- | --- |',
+        ...curveData.map((point) => `| ${point.month} | ${point.weight.toFixed(1)} | ${point.status} |`)
+    ].join('\n');
+
+    return {
+        code: 200,
+        message: '模拟结果生成',
+        pig_id: pigId,
+        report: `# ${pigId} 智能生长分析报告
+
+## 基本信息
+
+- **猪只ID**：\`${pigId}\`
+- **品种**：${pig.breed}
+- **所在区域**：${pig.area}
+- **当前月龄**：${pig.current_month} 月
+- **当前体重**：${pig.current_weight_kg.toFixed(1)} kg
+
+## 生长趋势概览
+
+- **预测净增重**：${gain} kg
+- **预测结束月龄**：${lastPoint.month} 月
+- **目标状态**：${lastPoint.status}
+- 历史采食记录显示，平均每月喂食约 **${avgFeedCount}** 次，饮水时长约 **${avgWaterDuration}** 分钟，整体采食状况良好。
+
+${historicalTable}
+
+${predictionTable}
+
+## AI 建议
+
+1. 保持当前饲喂节奏（每月约 ${avgFeedCount} 次），避免在快速增重阶段频繁换料。
+2. 每周复核一次体重，与曲线偏差超过 5kg 时重新评估饲喂方案。
+3. 持续关注饮水时长变化，若饮水量低于均值（${avgWaterDuration} min/月）超过10%，建议检查饮水设施和健康状态。
+
+*报告生成时间：${new Date().toLocaleString('zh-CN')}*`,
+        timestamp: new Date().toISOString()
+    };
+};
+
 
 export const apiService = {
     /** 身份验证：登录接口 */
@@ -209,6 +431,14 @@ export const apiService = {
 
     /** 辅助：获取所有在册生猪列表 (用于选择生成报告) */
     getPigsList: async () => {
+        if (USE_REAL_API) {
+            const res = await http.get('/pigs/list');
+            // 处理ApiResponse包装的数据结构
+            if (res.data && res.data.data) {
+                return res.data;
+            }
+            return res.data || mockResponse(MOCK_PIGS_LIST);
+        }
         await delay(500);
         return mockResponse(MOCK_PIGS_LIST);
     },
@@ -217,20 +447,40 @@ export const apiService = {
     getBriefingHistory: async (limit: number = 10) => {
         if (USE_REAL_API) {
             const res = await http.get('/briefing/history', { params: { limit } });
-            return res.data.data; // 返回实际的数组，而不是整个响应
+            // 处理ApiResponse包装的数据结构
+            if (res.data && res.data.data) {
+                return res.data.data;
+            }
+            return res.data || [];
         }
         await delay(500);
-        return [
-            { id: 101, briefingDate: '2026-03-17', summary: '今日全场平稳，PIG001 进食略减。' },
-            { id: 100, briefingDate: '2026-03-16', summary: '全场活跃度极佳，无异常个体。' }
-        ];
+        // 生成模拟的历史简报数据
+        const mockBriefings = [];
+        const today = new Date();
+        for (let i = 0; i < Math.min(limit, 15); i++) {
+            const date = new Date(today);
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+            
+            mockBriefings.push({
+                id: 200 - i,
+                briefingDate: dateStr,
+                summary: `第${i === 0 ? '今' : i}日简报：全场运行${['平稳', '良好', '正常', '优秀'][i % 4]}，${['无异常', '个别关注', '重点监测', '全面健康'][i % 4]}。`,
+                content: generateMockBriefingContent(dateStr, i)
+            });
+        }
+        return mockBriefings;
     },
 
     /** 获取最新一期简报详情 */
     getLatestBriefing: async () => {
         if (USE_REAL_API) {
             const res = await http.get('/briefing/latest');
-            return res.data.data; // 返回实际的简报对象
+            // 处理ApiResponse包装的数据结构
+            if (res.data && res.data.data) {
+                return res.data.data;
+            }
+            return res.data || null;
         }
         await delay(500);
         return {
@@ -241,8 +491,23 @@ export const apiService = {
 
     /** 手动触发简报生成 */
     triggerBriefing: async () => {
-        const res = await http.post('/briefing/trigger');
-        return res.data.data; // 返回实际的简报对象，而不是整个响应
+        if (USE_REAL_API) {
+            const res = await http.post('/briefing/trigger', {}, { timeout: 180000 }); // 增加超时时间到3分钟
+            // 处理ApiResponse包装的数据结构
+            if (res.data && res.data.data) {
+                return res.data.data;
+            }
+            return res.data || null;
+        }
+        // 模拟生成简报（延迟2秒模拟AI处理时间）
+        await delay(2000);
+        const today = new Date().toISOString().split('T')[0];
+        return {
+            id: Date.now(),
+            briefingDate: today,
+            summary: '今日简报已生成：全场运行优秀，无异常个体。',
+            content: generateMockBriefingContent(today, 0)
+        };
     },
 
     /** 
@@ -251,14 +516,8 @@ export const apiService = {
      */
     generatePigInspectionReport: async (pigId: string) => {
         if (!USE_REAL_API) {
-            await delay(800);
-            return {
-                code: 200,
-                message: '模拟结果生成',
-                pig_id: pigId,
-                report: `# ${pigId} 智能分析报告 (演示模式)\n\n请在开发配置中开启真实 API 以获取 AI 推理结果。`,
-                timestamp: new Date().toISOString()
-            };
+            await delay(1500);
+            return buildMockPigInspectionReport(pigId);
         }
 
         const res = await http.post(
@@ -283,7 +542,8 @@ export const apiService = {
         if (!USE_REAL_API) {
             onEvent({ event: 'status', data: { message: '正在激活模拟认知链路...' } });
             await delay(500);
-            const mockMarkdown = `# ${pigId} 智能研判结果\n\n报告正在以逐流模式进行模拟输出...`;
+            const mockReport = buildMockPigInspectionReport(pigId);
+            const mockMarkdown = mockReport.report;
             onEvent({ event: 'status', data: { message: '正在构建 Markdown 响应帧...' } });
 
             const chunkSize = 15;
@@ -292,7 +552,7 @@ export const apiService = {
                 await delay(40);
             }
 
-            onEvent({ event: 'done', data: { code: 200, pig_id: pigId, timestamp: new Date().toISOString() } });
+            onEvent({ event: 'done', data: { code: 200, pig_id: pigId, timestamp: mockReport.timestamp } });
             return;
         }
 
@@ -373,5 +633,24 @@ export const apiService = {
             throw new Error(`Agent Chat Failed: ${res.status} - ${errBody}`);
         }
         return await res.json();
+    },
+
+    /**
+     * 获取生长曲线数据
+     * 返回指定猪只的生长预测曲线数据点
+     */
+    getGrowthCurve: async (pigId: string) => {
+        if (USE_REAL_API) {
+            const res = await http.get(`/pigs/${pigId}/growth-curve`);
+            // 处理ApiResponse包装的数据结构
+            if (res.data && res.data.data) {
+                return res.data;
+            }
+            return res.data || mockResponse([]);
+        }
+        
+        // Mock模式：按当前猪只数据生成稳定曲线
+        await delay(500);
+        return mockResponse(buildMockGrowthCurve(pigId));
     }
 };

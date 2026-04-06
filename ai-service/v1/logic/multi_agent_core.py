@@ -1,6 +1,81 @@
 """
 多智能体架构核心 - Supervisor + Worker 模式
-实现意图路由和专家分工
+==========================================
+
+本模块实现了基于意图路由的多智能体协作系统，采用经典的 Supervisor-Worker 架构。
+
+架构设计：
+┌─────────────────────────────────────────────────────────┐
+│                    用户输入                              │
+│              (文本 + 可选图片)                           │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+         ┌───────────────────────┐
+         │  SupervisorAgent      │  ← 意图路由中心
+         │  (意图识别与分发)      │
+         └───────────┬───────────┘
+                     │
+         ┌───────────┼───────────┐
+         │           │           │
+         ▼           ▼           ▼
+    ┌────────┐  ┌────────┐  ┌────────┐
+    │VetAgent│  │DataAgent│ │Perception│  ← 专家Worker
+    │兽医诊断│  │数据查询│  │视觉识别│
+    └────────┘  └────────┘  └────────┘
+         │           │           │
+         └───────────┼───────────┘
+                     │
+                     ▼
+              ┌─────────────┐
+              │  最终答案    │
+              └─────────────┘
+
+核心组件：
+1. SupervisorAgent：意图路由器
+   - 分析用户输入，判断需要哪个专家处理
+   - 支持基于LLM的智能路由和基于规则的降级路由
+   - 多模态支持：检测到图片时自动路由到兽医Agent
+
+2. WorkerAgent：专家基类
+   - 定义了所有专家Agent的通用接口
+   - 实现了标准的ReAct推理循环
+   - 提供工具调用、结果提取等通用功能
+
+3. 具体Worker实现：
+   - VetAgent：兽医诊断专家（支持多模态图片问诊）
+   - DataAgent：数据查询专家（猪只档案、生长曲线）
+   - PerceptionAgent：视觉识别专家（视频监控分析）
+
+4. MultiAgentOrchestrator：协调器
+   - 统一的多智能体执行入口
+   - 管理所有Worker实例
+   - 处理路由和结果返回
+
+技术特性：
+- ReAct推理：Thought → Action → Observation 循环
+- 工具链调用：每个Worker有专属的工具集
+- 多模态支持：文本 + 图片混合输入
+- 降级机制：LLM不可用时自动切换到规则引擎
+- Rich美化：终端输出带颜色和格式化
+- 调试支持：集成SSE调试流，实时查看推理过程
+
+使用示例：
+    # 创建协调器
+    orchestrator = MultiAgentOrchestrator()
+    
+    # 构建上下文
+    context = AgentContext(
+        user_id="user_001",
+        user_input="查询猪只LTW-001的生长曲线",
+        chat_history=[],
+        metadata={},
+        client_id="web_client_001"
+    )
+    
+    # 执行
+    result = await orchestrator.execute(context)
+    print(result.answer)
 """
 from __future__ import annotations
 
@@ -47,12 +122,24 @@ except Exception:
 
 
 # ============================================================
-# 数据结构
+# 数据结构定义
 # ============================================================
 
 @dataclass
 class AgentContext:
-    """Agent 执行上下文"""
+    """
+    Agent执行上下文
+    
+    封装了Agent执行所需的所有输入信息，包括用户输入、历史对话、元数据等。
+    
+    Attributes:
+        user_id: 用户唯一标识符
+        user_input: 用户当前输入的文本
+        chat_history: 历史对话记录列表（每条记录包含role和content）
+        metadata: 额外的元数据（如pig_id等）
+        client_id: 客户端标识符（用于SSE调试流）
+        image_urls: 多模态图片URL列表（可选，用于图片问诊）
+    """
     user_id: str
     user_input: str
     chat_history: list
@@ -63,7 +150,21 @@ class AgentContext:
 
 @dataclass
 class AgentResult:
-    """Agent 执行结果"""
+    """
+    Agent执行结果
+    
+    封装了Agent执行后的所有输出信息，包括答案、思考过程、工具调用记录等。
+    
+    Attributes:
+        success: 执行是否成功
+        answer: 最终答案（返回给用户的文本）
+        worker_name: 执行该任务的Worker名称（可选）
+        thoughts: 思考过程列表（ReAct的Thought步骤）
+        tool_outputs: 工具调用输出列表（ReAct的Observation步骤）
+        error: 错误信息（如果执行失败）
+        image: Base64编码的图片（可选，用于返回生成的图片）
+        metadata: 额外的元数据（如执行模式、工具调用次数等）
+    """
     success: bool
     answer: str
     worker_name: Optional[str] = None
@@ -74,6 +175,7 @@ class AgentResult:
     metadata: Optional[dict] = None  # 额外的元数据
 
     def __post_init__(self):
+        """初始化默认值"""
         if self.thoughts is None:
             self.thoughts = []
         if self.tool_outputs is None:
@@ -998,7 +1100,7 @@ class DataAgent(WorkerAgent):
                     raise ValueError(f"invalid growth payload: {growth_raw[:200]}")
                 if growth_data.get("error"):
                     raise ValueError(str(growth_data["error"]))
-                report = self._build_growth_curve_report(pig_id, pig_info, growth_data)
+                report = self._build_growth_curve_report_v2(pig_id, pig_info, growth_data)
                 report_mode = "simple_growth_report"
 
             logger.info("data_agent fallback success pig_id=%s", pig_id)
@@ -1129,6 +1231,35 @@ class DataAgent(WorkerAgent):
             return lifecycle[-1]
         return {}
 
+    def _extract_historical_points(self, lifecycle: list, current_month: int) -> list[dict]:
+        if not isinstance(lifecycle, list):
+            return []
+
+        rows = [item for item in lifecycle if isinstance(item, dict)]
+        rows.sort(key=lambda item: self._coerce_int(item.get("month"), 9999))
+
+        points: list[dict] = []
+        for item in rows:
+            month = self._coerce_int(item.get("month"), 0)
+            weight = self._coerce_float(
+                item.get("weight_kg") or item.get("weightKg") or item.get("weight"),
+                0.0,
+            )
+            if month <= 0 or weight <= 0:
+                continue
+            if current_month and month > current_month:
+                continue
+
+            points.append(
+                {
+                    "month": month,
+                    "weight_kg": round(weight, 2),
+                    "status": "当前实测" if current_month and month == current_month else "历史实测",
+                }
+            )
+
+        return points
+
     def _select_best_match(self, growth_data: dict) -> dict:
         matches = growth_data.get("top_matches") or []
         if not isinstance(matches, list) or not matches:
@@ -1140,6 +1271,57 @@ class DataAgent(WorkerAgent):
             valid_matches,
             key=lambda m: self._coerce_float(m.get("similarity_distance"), 9999.0),
         )[0]
+
+    def _collect_future_points(self, growth_data: dict, current_month: int) -> tuple[list[dict], int]:
+        matches = growth_data.get("top_matches") or []
+        if not isinstance(matches, list):
+            return [], 0
+
+        valid_matches = sorted(
+            [match for match in matches if isinstance(match, dict)],
+            key=lambda match: self._coerce_float(match.get("similarity_distance"), 9999.0),
+        )
+        if not valid_matches:
+            return [], 0
+
+        month_buckets: dict[int, list[float]] = {}
+        for match in valid_matches:
+            future_track = match.get("historical_future_track") or []
+            if not isinstance(future_track, list):
+                continue
+
+            for item in future_track:
+                if not isinstance(item, dict):
+                    continue
+
+                month = self._coerce_int(item.get("month"), 0)
+                weight = self._coerce_float(item.get("weight_kg") or item.get("weight"), 0.0)
+                if month <= current_month or weight <= 0:
+                    continue
+
+                month_buckets.setdefault(month, []).append(weight)
+
+        future_points: list[dict] = []
+        for month in sorted(month_buckets.keys()):
+            weights = month_buckets[month]
+            avg_weight = round(sum(weights) / len(weights), 2)
+
+            if avg_weight >= 100:
+                status = "预计出栏"
+            elif month == current_month + 1:
+                status = "下月预测"
+            else:
+                status = "后期预测"
+
+            future_points.append(
+                {
+                    "month": month,
+                    "weight_kg": avg_weight,
+                    "status": status,
+                }
+            )
+
+        return future_points, len(valid_matches)
 
     def _build_growth_curve_report(self, pig_id: str, pig_info: dict, growth_data: dict) -> str:
         breed = str(pig_info.get("breed") or "未知")
@@ -1210,6 +1392,77 @@ class DataAgent(WorkerAgent):
 
         if len(points) <= 1:
             lines.append("- 当前可用预测数据较少，后续补充更多历史样本后曲线会更完整。")
+
+        lines.extend(
+            [
+                "",
+                "### 预测生长曲线数据 (Monthly)",
+                "| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |",
+                "| --- | --- | --- |",
+            ]
+        )
+
+        for item in points:
+            lines.append(
+                f"| {self._coerce_int(item.get('month'))} | {self._coerce_float(item.get('weight_kg')):.2f} | {str(item.get('status') or '预测')} |"
+            )
+
+        return "\n".join(lines)
+
+    def _build_growth_curve_report_v2(self, pig_id: str, pig_info: dict, growth_data: dict) -> str:
+        breed = str(pig_info.get("breed") or "未知")
+        lifecycle = pig_info.get("lifecycle") or []
+        current_month = self._coerce_int(pig_info.get("current_month") or pig_info.get("currentMonth"), 0)
+        current_weight = self._coerce_float(
+            pig_info.get("current_weight_kg") or pig_info.get("currentWeightKg") or pig_info.get("currentWeight"),
+            0.0,
+        )
+
+        if not current_month and isinstance(lifecycle, list):
+            current_month = len(lifecycle)
+        if not current_weight and isinstance(lifecycle, list):
+            month_data = self._pick_current_month_data(lifecycle, current_month or len(lifecycle))
+            current_weight = self._coerce_float(
+                month_data.get("weight_kg") or month_data.get("weightKg") or month_data.get("weight"),
+                0.0,
+            )
+
+        best_match = self._select_best_match(growth_data)
+        matched_pig = str(best_match.get("matched_pig") or "N/A")
+        distance = self._coerce_float(best_match.get("similarity_distance"), 0.0)
+
+        points = self._extract_historical_points(lifecycle, current_month)
+        if current_month and current_weight > 0 and not any(item.get("month") == current_month for item in points):
+            points.append({"month": current_month, "weight_kg": round(current_weight, 2), "status": "当前实测"})
+
+        future_points, match_count = self._collect_future_points(growth_data, current_month)
+        points.extend(future_points)
+
+        deduped: dict[int, dict] = {}
+        for item in points:
+            deduped[self._coerce_int(item.get("month"), 0)] = item
+        points = [deduped[month] for month in sorted(deduped.keys()) if month > 0]
+
+        last_point = points[-1] if points else {"month": current_month, "weight_kg": current_weight}
+        last_month = self._coerce_int(last_point.get("month"), current_month)
+        last_weight = self._coerce_float(last_point.get("weight_kg"), current_weight)
+        gain = round(last_weight - current_weight, 2)
+
+        lines = [
+            f"## {pig_id} 生长曲线预测报告",
+            "",
+            f"- 品种：{breed}",
+            f"- 当前月龄：{current_month}",
+            f"- 当前体重：{current_weight:.2f} kg",
+            "",
+            "### 预测结论",
+            f"- 本次共参考 {match_count} 个相似历史案例，最相似个体为 `{matched_pig}`，相似距离约 {distance:.4f}。",
+            f"- 若按历史相似轨迹延续，预计到 {last_month} 月体重约 {last_weight:.2f} kg。",
+            f"- 从当前到预测终点，累计增重约 {gain:.2f} kg。",
+        ]
+
+        if not future_points:
+            lines.append("- 当前可用的未来预测月份较少，后续补充更多历史样本后曲线会更完整。")
 
         lines.extend(
             [

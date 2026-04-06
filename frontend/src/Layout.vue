@@ -11,7 +11,6 @@ import {
   Warehouse,
   MessageSquare,
 } from 'lucide-vue-next';
-import { alertVoiceState } from './services/alertVoice';
 import { cn } from './utils';
 
 const router = useRouter();
@@ -30,24 +29,6 @@ const navItems = [
 
 const currentPath = computed(() => route.path);
 
-const voiceStatusText = computed(() => {
-  if (alertVoiceState.serviceUnavailable) return '语音服务待配置';
-  if (alertVoiceState.lastError) return '语音服务异常';
-  if (alertVoiceState.requiresInteraction) return '等待页面交互';
-  if (alertVoiceState.speaking) return '正在播报';
-  if (alertVoiceState.connected) return '实时监听中';
-  return '连接中断，重试中';
-});
-
-const voiceStatusClass = computed(() => {
-  if (alertVoiceState.serviceUnavailable) return 'border-amber-200 bg-amber-50 text-amber-700';
-  if (alertVoiceState.lastError) return 'border-red-200 bg-red-50 text-red-700';
-  if (alertVoiceState.requiresInteraction) return 'border-sky-200 bg-sky-50 text-sky-700';
-  if (alertVoiceState.speaking) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (alertVoiceState.connected) return 'border-slate-200 bg-white/90 text-slate-700';
-  return 'border-red-200 bg-red-50 text-red-700';
-});
-
 function isItemActive(item: { id: string; path: string }) {
   return item.path === currentPath.value;
 }
@@ -59,17 +40,6 @@ function handleNavigate(path: string) {
 
 <template>
   <div class="min-h-screen bg-[#f1f2f6] flex font-sans text-slate-800">
-    <div
-      :class="cn(
-        'fixed top-8 right-8 z-40 rounded-2xl border px-4 py-3 shadow-sm backdrop-blur-md transition-all duration-300',
-        voiceStatusClass
-      )"
-    >
-      <div class="text-[10px] font-bold uppercase tracking-[0.22em]">语音播报</div>
-      <div class="mt-1 text-sm font-semibold">{{ voiceStatusText }}</div>
-      <div class="mt-1 text-[11px] opacity-70">待播报 {{ alertVoiceState.pendingCount }} 条</div>
-    </div>
-
     <div
       class="fixed top-8 left-8 z-40 bg-white/60 backdrop-blur-md p-3 rounded-2xl shadow-sm cursor-pointer hover:bg-white hover:shadow-md transition-all duration-300 pointer-events-auto"
       @mouseenter="isSidebarOpen = true"
