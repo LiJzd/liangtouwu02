@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-slate-50 text-slate-900;
+@layer base {
+  body {
+    @apply bg-background text-on-background font-body selection:bg-secondary selection:text-white data-screen-bg min-h-screen text-slate-800;
+  }
+}
+
+@layer utilities {
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  
+  .pulse-indicator {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4);
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(5, 150, 105, 0); }
+  }
+  
+  .data-screen-bg {
+    background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%);
+  }
+  
+  .chart-line {
+    /* If manually animated SVG curves */
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+    animation: dash 3s linear forwards;
+  }
+  
+  @keyframes dash {
+    to { stroke-dashoffset: 0; }
+  }
 }

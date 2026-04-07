@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
 import { apiService } from '../api';
-import { 
-  Bot, User, Send, Image as ImageIcon, Mic, Paperclip, MoreHorizontal, Info, Loader2 
-} from 'lucide-vue-next';
 
 interface ChatMessage {
   id: string;
@@ -25,7 +22,7 @@ onMounted(() => {
   messages.value.push({
     id: Date.now().toString(),
     role: 'assistant',
-    content: '你好！我是您的两头乌专属智能助手 PigBOT 🐽。您可以向我咨询生猪喂养、异常诊断等问题，点击下方图片按钮还可以发送现场实况给我哦~',
+    content: '你好呀！我是两头乌数字牧场的 PigBOT 专属智能助理 🐽。\n任何生猪健康分析、体态辨识问题，都可以发送图片向我咨询！',
     timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
   });
 });
@@ -73,29 +70,24 @@ const handleSend = async (imageB64?: string) => {
   await scrollToBottom();
 
   try {
-    // 构造发送给后端的结构
-    // 过滤掉 typing 状态的消息，保留完整的对话历史
     const apiMessages = messages.value
-      .filter(m => !m.isTyping) // 只过滤掉正在输入的消息
+      .filter(m => !m.isTyping)
       .map(m => ({
         role: m.role,
         content: m.content
       }));
       
-    const recentMessages = apiMessages.slice(-10); // 取最后 10 条作为上下文（包含用户和助手的对话）
+    const recentMessages = apiMessages.slice(-10);
     const urlsToSends = imageB64 ? [imageB64] : [];
 
-    // 调用真正后端的 AI 接口
     const response = await apiService.chatWithPigBot(recentMessages, urlsToSends);
     
-    // 移除 typing
     messages.value = messages.value.filter(m => m.id !== typingMsgId);
     
-    // 添加回复
     messages.value.push({
       id: Date.now().toString(),
       role: 'assistant',
-      content: response.reply || '分析完毕，我未得到任何有效诊断结果。',
+      content: response.reply || '分析完毕，我未获得任何有效诊断结果。',
       image: response.image ? `data:image/png;base64,${response.image}` : undefined,
       timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     });
@@ -105,7 +97,7 @@ const handleSend = async (imageB64?: string) => {
     messages.value.push({
       id: Date.now().toString(),
       role: 'assistant',
-      content: `由于网络原因，我暂时无法进行回复 (${error.message})。`,
+      content: `由于网络波动，连接中枢服务失败 (${error.message})。请稍后重试。`,
       timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
     });
   } finally {
@@ -125,207 +117,221 @@ const handleFileChange = (e: Event) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     const base64String = event.target?.result as string;
-    // 如果没有输入文字，默认加一句提示
     if (!inputMessage.value.trim()) {
-      inputMessage.value = '请帮我看看这张照片，这头猪是否有异常？';
+      inputMessage.value = '请帮我化验一下这里的图片内容？';
     }
     handleSend(base64String);
   };
   reader.readAsDataURL(file);
   
-  if (fileInput.value) fileInput.value.value = ''; // 清空选择
+  if (fileInput.value) fileInput.value.value = '';
 };
 </script>
 
 <template>
-  <!-- 整个聊天容器，设计类似 QQ 窗口且置中高屏幕 -->
-  <div class="h-[calc(100vh-8rem)] min-h-[600px] w-full max-w-5xl mx-auto flex gap-6 pb-4">
+  <div class="h-[calc(100vh-8rem)] min-h-[600px] w-full max-w-6xl mx-auto flex gap-6 pb-4 relative z-10">
     
-    <!-- 侧边辅助说明 (可选) -->
-    <div class="hidden lg:flex w-64 bg-white/70 backdrop-blur-xl rounded-[2rem] shadow-sm border border-slate-100 flex-col overflow-hidden">
-      <div class="h-40 bg-gradient-to-b from-sky-400 to-blue-500 relative flex items-center justify-center text-white">
-        <Bot class="w-16 h-16 opacity-90 drop-shadow-md" />
-        <div class="absolute bottom-4 text-center w-full">
-          <p class="font-bold text-lg tracking-wider">PigBOT 专家</p>
-          <p class="text-xs text-blue-100 mt-1">AI 驱动 - 24小时在线</p>
+    <!-- 左侧详情 (大屏可见) -->
+    <div class="hidden lg:flex w-72 bg-white/80 backdrop-blur-3xl rounded-[2rem] shadow-sm border border-emerald-100 flex-col overflow-hidden self-start mt-6">
+      <div class="h-44 bg-gradient-to-br from-emerald-500 to-secondary relative flex items-center justify-center text-white">
+        <!-- 装饰底纹 -->
+        <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20 pointer-events-none"></div>
+        <span class="material-symbols-outlined text-white text-[72px] drop-shadow-lg opacity-90 z-10">smart_toy</span>
+        <div class="absolute bottom-4 text-center w-full z-10">
+          <p class="font-bold font-headline text-2xl tracking-tight">PigBOT AI</p>
+          <p class="text-[10px] text-emerald-50 mt-1 font-inter font-bold tracking-widest uppercase">全天候视觉驱动诊断服务</p>
         </div>
       </div>
-      <div class="p-6 text-slate-600 text-sm space-y-4">
-        <p class="flex items-start gap-2">
-          <Info class="w-4 h-4 mt-0.5 text-blue-500 shrink-0" />
-          <span>我可以为您分析上传的图片并进行病理解读。</span>
+      <div class="p-6 text-emerald-900/70 text-xs space-y-4 font-inter leading-relaxed bg-surface-bright/50">
+        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
+          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">qr_code_scanner</span>
+          <span class="font-bold">深度视觉化验</span>
+          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">为上传的图像或现场视频指认病理特征分析。</span>
         </p>
-        <p class="flex items-start gap-2">
-          <Info class="w-4 h-4 mt-0.5 text-blue-500 shrink-0" />
-          <span>我是集成了多模态大模型和 RAG 知识库的综合诊断型智能体。</span>
+        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
+          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">database</span>
+          <span class="font-bold">专家知识中枢</span>
+          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">集成兽牧专业 RAG 资料库，辅助出具全息诊疗法。</span>
         </p>
-        <p class="flex items-start gap-2">
-          <Info class="w-4 h-4 mt-0.5 text-blue-500 shrink-0" />
-          <span>支持多轮追问。您可以直接像和真人聊天一样提问。</span>
+        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
+          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">3p</span>
+          <span class="font-bold">长程环境溯源</span>
+          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">支持联系上下文环境连续问询，提供全局洞察力。</span>
         </p>
       </div>
     </div>
 
-    <!-- 聊天主窗口：模仿现代拟物风格 -->
-    <div class="flex-1 bg-white/80 backdrop-blur-2xl rounded-[2rem] shadow-lg border border-white flex flex-col overflow-hidden ring-1 ring-slate-100">
-      
-      <!-- 头部 -->
-      <header class="h-16 px-6 border-b border-slate-100 bg-white/50 flex flex-row items-center justify-between shrink-0">
-        <div class="flex items-center gap-3">
-          <div class="relative">
-            <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-sky-400 to-blue-500 flex items-center justify-center text-white shadow-sm ring-2 ring-white">
-              <Bot class="w-6 h-6" />
-            </div>
-            <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
-          </div>
-          <div>
-            <h2 class="font-bold text-slate-800 tracking-tight leading-tight">专家会诊 PigBOT</h2>
-            <p class="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-              <span>手机在线 - WiFi</span>
-              <span class="w-1 h-1 rounded-full bg-slate-300"></span>
-              <span class="text-xs">支持视觉识别</span>
-            </p>
-          </div>
+    <!-- 🌟 手机模拟器视图 🌟 -->
+    <div class="flex-1 flex justify-center items-center relative py-2">
+      <!-- 手机外壳 -->
+      <div class="relative w-[360px] md:w-[380px] h-[720px] md:h-[780px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
+        
+        <!-- 侧边物理按键特效 -->
+        <div class="absolute -left-[14px] top-32 w-1 h-8 rounded-l-md bg-emerald-900"></div>
+        <div class="absolute -left-[14px] top-48 w-1 h-12 rounded-l-md bg-emerald-900"></div>
+        <div class="absolute -left-[14px] top-64 w-1 h-12 rounded-l-md bg-emerald-900"></div>
+        <div class="absolute -right-[14px] top-40 w-1 h-16 rounded-r-md bg-emerald-900"></div>
+
+        <!-- 听筒 / 动态岛 -->
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-emerald-950/95 rounded-b-[18px] z-50 flex items-center justify-center">
+          <div class="w-12 h-1 rounded-full bg-black/60 shadow-inner"></div>
+          <div class="w-1.5 h-1.5 rounded-full bg-blue-800/80 ml-2 relative overflow-hidden"><div class="absolute inset-y-0 right-0 w-[0.5px] bg-white/30"></div></div>
         </div>
-        <button class="w-10 h-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors">
-          <MoreHorizontal class="w-5 h-5" />
-        </button>
-      </header>
 
-      <!-- 消息体区域 -->
-      <main 
-        class="flex-1 overflow-y-auto w-full p-6 space-y-6 scroll-smooth bg-[#f5f6fa]"
-        ref="chatContainer"
-      >
-        <div 
-          v-for="msg in messages" 
-          :key="msg.id"
-          class="flex w-full group"
-          :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
-        >
-          <!-- 助手头像布局 -->
-          <div v-if="msg.role === 'assistant'" class="w-9 h-9 rounded-full bg-blue-500 shrink-0 mr-3 flex items-center justify-center text-white shadow-sm mt-1">
-            <Bot class="w-5 h-5" />
-          </div>
-
-          <div 
-            class="flex flex-col relative max-w-[70%]"
-            :class="msg.role === 'user' ? 'items-end' : 'items-start'"
-          >
-            <!-- 名字与时间 -->
-            <div class="text-[11px] text-slate-400 mb-1 flex items-center gap-2 px-1">
-              <span v-if="msg.role === 'assistant'">PigBOT</span>
-              <span>{{ msg.timestamp }}</span>
-              <span v-if="msg.role === 'user'">我</span>
-            </div>
-
-            <!-- 消息气泡 -->
-            <div 
-              class="relative px-4 py-2.5 text-sm/relaxed select-text min-h-[40px] flex flex-col"
-              :class="[
-                msg.role === 'user'
-                  ? 'bg-gradient-to-br from-blue-500 to-sky-500 text-white rounded-[1.2rem] rounded-tr-sm shadow-[0_2px_10px_-3px_rgba(59,130,246,0.3)]'
-                  : 'bg-white text-slate-800 rounded-[1.2rem] rounded-tl-sm shadow-sm ring-1 ring-slate-100',
-              ]"
-            >
-              <!-- 文本内容，支持换行呈现 -->
-              <div v-if="!msg.isTyping" class="whitespace-pre-wrap word-break-all">{{ msg.content }}</div>
+        <!-- APP PWA 内容区域 -->
+        <div class="flex-1 w-full bg-surface-bright flex flex-col relative pt-[28px] overflow-hidden z-40 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+          
+          <!-- App 导航栏 -->
+          <header class="min-h-[60px] px-4 border-b border-emerald-100/60 bg-white/80 backdrop-blur-md shrink-0 flex items-center justify-between shadow-sm z-30 relative">
+            <div class="flex items-center gap-3">
+              <button class="w-8 h-8 rounded-full bg-emerald-50 text-emerald-900/60 flex items-center justify-center hover:text-secondary hover:bg-emerald-100 transition-colors">
+                <span class="material-symbols-outlined text-[18px]">arrow_back_ios_new</span>
+              </button>
               
-              <!-- 图像模态呈现 -->
-              <div v-if="msg.image" class="mt-2 rounded-xl border border-white/20 overflow-hidden bg-slate-100 shadow-sm max-w-[240px]">
-                <img :src="msg.image" class="w-full h-auto object-cover" alt="附带截图" />
-              </div>
-
-              <!-- 打字提示条 (针对 isTyping) -->
-              <div v-if="msg.isTyping" class="flex gap-1.5 items-center h-5 w-10">
-                <span class="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
-                <span class="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
-                <span class="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></span>
+              <div class="flex items-center gap-2">
+                <div class="relative group-hover:scale-105 transition-transform duration-300">
+                  <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-500 to-secondary flex items-center justify-center text-white shadow shadow-secondary/30">
+                    <span class="material-symbols-outlined text-[20px]">smart_toy</span>
+                  </div>
+                  <span class="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></span>
+                </div>
+                <div>
+                  <h2 class="font-bold font-headline text-emerald-950 text-[14px] tracking-tight leading-tight">驻场数字专家 AI</h2>
+                  <p class="text-[9px] text-emerald-900/50 font-bold uppercase tracking-widest flex items-center gap-1 mt-0.5">
+                    <span class="text-green-600 font-inter">Live</span> VISION
+                  </p>
+                </div>
               </div>
             </div>
             
-          </div>
+            <button class="w-8 h-8 rounded-full hover:bg-emerald-50 flex items-center justify-center text-emerald-900/60 transition-colors">
+              <span class="material-symbols-outlined text-[20px]">more_vert</span>
+            </button>
+          </header>
 
-          <!-- 用户头像布局 -->
-          <div v-if="msg.role === 'user'" class="w-9 h-9 rounded-full bg-slate-200 shrink-0 ml-3 flex items-center justify-center text-slate-500 overflow-hidden shadow-sm mt-1 ring-1 ring-white">
-            <User class="w-5 h-5" />
-          </div>
+          <!-- 聊天内容流 -->
+          <main 
+            class="flex-1 overflow-y-auto w-full p-4 space-y-5 scroll-smooth bg-transparent custom-scrollbar pb-6"
+            ref="chatContainer"
+          >
+            <div 
+              v-for="msg in messages" 
+              :key="msg.id"
+              class="flex w-full group"
+              :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+            >
+              <!-- 助手小卡片头像 -->
+              <div v-if="msg.role === 'assistant'" class="w-8 h-8 rounded-full bg-gradient-to-tr from-emerald-500 to-secondary shrink-0 mr-2 flex items-center justify-center text-white shadow-[0_2px_10px_rgba(16,185,129,0.3)] mt-1 ml-1 cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">smart_toy</span>
+              </div>
+
+              <div 
+                class="flex flex-col relative max-w-[75%]"
+                :class="msg.role === 'user' ? 'items-end pr-1' : 'items-start'"
+              >
+                <!-- 发送时间及名称 -->
+                <div class="text-[9px] text-emerald-900/40 font-bold uppercase tracking-widest mb-1 flex items-center gap-1.5 px-1 font-inter">
+                  <span v-if="msg.role === 'assistant'" class="text-emerald-900/60">PigBOT</span>
+                  <span>{{ msg.timestamp }}</span>
+                </div>
+
+                <!-- 对话气泡框 -->
+                <div 
+                  class="relative px-3.5 py-2.5 text-[13px] font-inter leading-relaxed select-text min-h-[36px] flex flex-col transition-all border"
+                  :class="[
+                    msg.role === 'user'
+                      ? 'bg-gradient-to-r from-secondary to-[#047857] text-white rounded-[18px] rounded-tr-[4px] shadow-md shadow-emerald-600/20 border-transparent'
+                      : 'bg-white text-emerald-950 rounded-[18px] rounded-tl-[4px] shadow-sm border-emerald-100/80',
+                  ]"
+                >
+                  <div v-if="!msg.isTyping" class="whitespace-pre-wrap break-words break-all">{{ msg.content }}</div>
+                  
+                  <!-- 发送的图像渲染缩略图 -->
+                  <div v-if="msg.image" class="mt-2 rounded-xl border border-black/10 overflow-hidden bg-emerald-50 shadow-inner max-w-[200px]">
+                    <img :src="msg.image" class="w-full h-auto object-cover hover:scale-110 transition-transform duration-300" alt="发图查验" />
+                  </div>
+
+                  <!-- 打字悬浮提示动画 -->
+                  <div v-if="msg.isTyping" class="flex gap-1.5 items-center justify-center h-4 w-8">
+                    <span class="w-1.5 h-1.5 bg-emerald-300 rounded-full animate-bounce [animation-delay:0ms]"></span>
+                    <span class="w-1.5 h-1.5 bg-secondary rounded-full animate-bounce [animation-delay:150ms]"></span>
+                    <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-bounce [animation-delay:300ms]"></span>
+                  </div>
+                </div>
+                
+              </div>
+            </div>
+          </main>
+
+          <!-- App 输入功能底部框 -->
+          <footer class="bg-white/80 backdrop-blur-md border-t border-emerald-100 z-30 shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.02)] pb-[env(safe-area-inset-bottom,16px)]">
+            <input 
+              type="file" 
+              ref="fileInput" 
+              class="hidden" 
+              accept="image/*"
+              @change="handleFileChange"
+            />
+
+            <!-- 功能附加面板按钮 -->
+            <div class="flex items-center gap-1.5 pt-2 pb-1 px-3">
+              <button 
+                @click="triggerFileUpload"
+                class="p-2 rounded-full text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-emerald-100"
+              >
+                <span class="material-symbols-outlined text-[18px]">add_photo_alternate</span>
+              </button>
+              <button class="p-2 rounded-full text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-emerald-100">
+                <span class="material-symbols-outlined text-[18px]">mic_none</span>
+              </button>
+              <button class="p-2 rounded-full text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-emerald-100">
+                <span class="material-symbols-outlined text-[18px]">add_circle</span>
+              </button>
+              <div class="flex-1"></div>
+            </div>
+
+            <!-- 主输入框与发送按钮栏 -->
+            <div class="flex flex-row items-end gap-2 px-3 pb-3">
+              <div class="flex-1 bg-surface-bright rounded-2xl border border-emerald-100 focus-within:bg-white focus-within:border-secondary focus-within:ring-2 focus-within:ring-secondary/20 transition-all flex pt-1 px-3 shadow-inner">
+                <textarea
+                  v-model="inputMessage"
+                  placeholder="向 AI 发送指令..."
+                  class="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-transparent resize-none py-2 text-[13px] font-inter text-emerald-950 placeholder:text-emerald-900/30 h-[48px] max-h-[120px]"
+                  @keydown.enter.prevent="handleSendText"
+                ></textarea>
+              </div>
+              
+              <button 
+                @click="handleSendText"
+                :disabled="(!inputMessage.trim() && !isSending) || isSending"
+                class="h-[46px] w-[46px] shrink-0 bg-gradient-to-tr from-emerald-600 to-secondary rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none mb-0.5"
+              >
+                <span v-if="!isSending" class="material-symbols-outlined text-[20px] ml-0.5">send</span>
+                <span v-else class="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+              </button>
+            </div>
+            
+            <!-- IOS 原生底部圆角粗黑条 (Safe Area 指示器) -->
+            <div class="w-full flex justify-center pt-1 pb-2 h-4">
+              <div class="w-1/3 h-1 bg-black/20 rounded-full"></div>
+            </div>
+          </footer>
         </div>
-      </main>
-
-      <!-- 底部输入栏 -->
-      <footer class="p-4 bg-white border-t border-slate-100 shrink-0">
-        <!-- 隐藏的文件选择器 -->
-        <input 
-          type="file" 
-          ref="fileInput" 
-          class="hidden" 
-          accept="image/*"
-          @change="handleFileChange"
-        />
-
-        <!-- 工具栏 -->
-        <div class="flex items-center gap-2 mb-2 px-1">
-          <button 
-            @click="triggerFileUpload"
-            class="p-2 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors tooltip relative group"
-            title="发送图片"
-          >
-            <ImageIcon class="w-5 h-5" />
-          </button>
-          <button 
-            class="p-2 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-            title="发送语音"
-          >
-            <Mic class="w-5 h-5" />
-          </button>
-          <button 
-            class="p-2 rounded-xl text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-            title="附件"
-          >
-            <Paperclip class="w-5 h-5" />
-          </button>
-        </div>
-
-        <div class="flex flex-row items-end gap-3 px-1">
-          <!-- 文本自适应框，简单使用了 textarea 设定高度 -->
-          <div class="flex-1 rounded-2xl bg-[#f8f9fa] border border-transparent focus-within:bg-white focus-within:border-blue-200 focus-within:shadow-[0_0_0_4px_rgba(59,130,246,0.05)] transition-all flex pt-1">
-            <textarea
-              v-model="inputMessage"
-              placeholder="请输入您的问题或发送照片，按 Enter 发送..."
-              class="w-full bg-transparent border-none focus:ring-0 resize-none py-2 px-4 h-[72px] text-sm text-slate-700 placeholder:text-slate-400"
-              @keydown.enter.prevent="handleSendText"
-            ></textarea>
-          </div>
-          
-          <button 
-            @click="handleSendText"
-            :disabled="(!inputMessage.trim() && !isSending) || isSending"
-            class="h-12 w-20 shrink-0 bg-blue-500 rounded-2xl flex items-center justify-center text-white shadow-[0_4px_12px_rgba(59,130,246,0.25)] hover:bg-blue-600 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-blue-500 mb-2.5"
-          >
-            <Send v-if="!isSending" class="w-5 h-5 ml-1" />
-            <Loader2 v-else class="w-5 h-5 animate-spin" />
-          </button>
-        </div>
-      </footer>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-/* 定义滚动条的纤细优美效果 */
-main::-webkit-scrollbar {
-  width: 6px;
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
   background-color: transparent;
 }
-main::-webkit-scrollbar-thumb {
-  background-color: rgba(0,0,0,0.1);
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(16, 185, 129, 0.2);
   border-radius: 99px;
 }
-main::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0,0,0,0.2);
-}
-.word-break-all {
-  word-break: break-word;
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: rgba(16, 185, 129, 0.4);
 }
 </style>

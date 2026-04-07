@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { AlertOctagon, Download, Filter, Info, RefreshCcw, Search } from 'lucide-vue-next';
 import { apiService, type Alert } from '../api';
 import { ALERT_RECEIVED_EVENT } from '../services/alertVoice';
 import { cn } from '../utils';
@@ -93,64 +92,69 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="space-y-6 flex flex-col h-full overflow-hidden">
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-5">
-      <div class="bg-white p-4 border border-slate-300 flex flex-col justify-between">
-        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">全部告警</span>
-        <span class="text-3xl font-mono font-bold text-slate-900 mt-2">{{ summaryStats.total }}</span>
+    <!-- 顶部状态卡片 -->
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-5">
+      <div class="bg-white/95 p-5 rounded-2xl border border-emerald-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+        <span class="text-[10px] font-bold text-emerald-900/60 uppercase tracking-widest">全部告警</span>
+        <span class="text-4xl font-headline font-bold text-emerald-950 mt-2">{{ summaryStats.total }}</span>
       </div>
-      <div class="bg-red-50 p-4 border border-red-200 border-l-4 border-l-red-600 flex flex-col justify-between">
+      <div class="bg-red-50/90 p-5 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
         <span class="text-[10px] font-bold text-red-600 uppercase tracking-widest">紧急</span>
-        <span class="text-3xl font-mono font-bold text-red-700 mt-2">{{ summaryStats.critical }}</span>
+        <span class="text-4xl font-headline font-bold text-red-700 mt-2">{{ summaryStats.critical }}</span>
       </div>
-      <div class="bg-orange-50 p-4 border border-orange-200 border-l-4 border-l-orange-600 flex flex-col justify-between">
+      <div class="bg-orange-50/90 p-5 rounded-2xl border border-orange-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
         <span class="text-[10px] font-bold text-orange-600 uppercase tracking-widest">高风险</span>
-        <span class="text-3xl font-mono font-bold text-orange-700 mt-2">{{ summaryStats.high }}</span>
+        <span class="text-4xl font-headline font-bold text-orange-700 mt-2">{{ summaryStats.high }}</span>
       </div>
-      <div class="bg-yellow-50 p-4 border border-yellow-200 border-l-4 border-l-yellow-600 flex flex-col justify-between">
-        <span class="text-[10px] font-bold text-yellow-600 uppercase tracking-widest">中风险</span>
-        <span class="text-3xl font-mono font-bold text-yellow-700 mt-2">{{ summaryStats.medium }}</span>
+      <div class="bg-amber-50/90 p-5 rounded-2xl border border-amber-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+        <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">中风险</span>
+        <span class="text-4xl font-headline font-bold text-amber-700 mt-2">{{ summaryStats.medium }}</span>
       </div>
-      <div class="bg-blue-50 p-4 border border-blue-200 border-l-4 border-l-blue-600 flex flex-col justify-between text-blue-700">
+      <div class="bg-blue-50/90 p-5 rounded-2xl border border-blue-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
         <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest">低风险</span>
-        <span class="text-3xl font-mono font-bold text-blue-800 mt-2">{{ summaryStats.low }}</span>
+        <span class="text-4xl font-headline font-bold text-blue-800 mt-2">{{ summaryStats.low }}</span>
       </div>
     </div>
 
-    <div class="bg-white border border-slate-300 flex flex-col flex-1 min-h-0 bg-[linear-gradient(rgba(0,0,0,0.01)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.01)_1px,transparent_1px)] bg-[size:32px_32px]">
-      <div class="p-4 border-b border-slate-300 flex flex-col gap-4 bg-white/80 backdrop-blur-sm sticky top-0 z-20 lg:flex-row lg:items-center lg:justify-between">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:flex-1">
+    <!-- 列表主体 -->
+    <div class="bg-white/90 backdrop-blur-md rounded-2xl border border-emerald-200 shadow-sm flex flex-col flex-1 min-h-[500px]">
+      
+      <!-- 控制栏 -->
+      <div class="p-4 border-b border-emerald-100 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:flex-1">
           <div class="relative w-full lg:w-64 group">
-            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-blue-600" />
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-emerald-900/40 group-focus-within:text-secondary transition-colors">search</span>
             <input
               v-model="filters.search"
               type="text"
-              placeholder="搜索猪只 ID 或告警类型"
-              class="w-full pl-9 pr-4 py-1.5 border border-slate-300 focus:outline-none focus:border-blue-600 font-mono text-xs placeholder-slate-400 bg-slate-50/50"
+              placeholder="搜索猪只 ID 或类型"
+              class="w-full pl-10 pr-4 py-2 border border-emerald-200 rounded-xl focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary font-inter text-sm placeholder-emerald-900/30 bg-white/50 transition-all"
             />
           </div>
 
-          <div class="hidden h-6 w-px bg-slate-300 lg:block"></div>
+          <div class="hidden h-6 w-px bg-emerald-200 lg:block"></div>
 
-          <div class="flex items-center space-x-2">
-            <Filter class="w-3.5 h-3.5 text-slate-500" />
+          <div class="flex items-center space-x-2 relative">
+            <span class="material-symbols-outlined text-lg text-emerald-900/60 absolute left-3 pointer-events-none">filter_alt</span>
             <select
               v-model="filters.area"
-              class="pl-2 pr-8 py-1.5 border border-slate-300 bg-slate-50/50 font-mono text-[11px] font-bold appearance-none cursor-pointer"
+              class="pl-9 pr-8 py-2 border border-emerald-200 rounded-xl bg-white/50 text-emerald-900 text-sm font-semibold appearance-none cursor-pointer focus:outline-none focus:border-secondary"
             >
               <option v-for="area in availableAreas" :key="area" :value="area">{{ area }}</option>
             </select>
+            <span class="material-symbols-outlined absolute right-3 pointer-events-none text-emerald-900/40">expand_more</span>
           </div>
 
-          <div class="flex flex-wrap bg-slate-100 border border-slate-300 p-0.5">
+          <div class="flex gap-1 bg-emerald-50/80 p-1 rounded-xl border border-emerald-100">
             <button
               v-for="level in riskLevels"
               :key="level"
               @click="filters.risk = level"
               :class="cn(
-                'px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all',
+                'px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all',
                 filters.risk === level
-                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-900 border border-transparent'
+                  ? 'bg-white text-secondary shadow-sm'
+                  : 'text-emerald-900/60 hover:text-emerald-900 hover:bg-emerald-100/50'
               )"
             >
               {{ level }}
@@ -160,70 +164,71 @@ onBeforeUnmount(() => {
 
         <div class="flex items-center space-x-2">
           <button
-            class="p-2 hover:bg-slate-100 border border-slate-300 text-slate-600"
+            class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-emerald-200 text-emerald-900/60 hover:text-secondary hover:border-secondary transition-all"
             title="刷新"
             @click="loadAlerts"
           >
-            <RefreshCcw :class="cn('w-4 h-4', loading && 'animate-spin')" />
+            <span :class="cn('material-symbols-outlined text-[20px]', loading && 'animate-spin')">refresh</span>
           </button>
-          <button class="p-2 hover:bg-slate-100 border border-slate-300 text-slate-400 cursor-not-allowed" title="导出功能待补充">
-            <Download class="w-4 h-4" />
+          <button class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-emerald-200 text-emerald-900/40 cursor-not-allowed transition-all" title="导出功能待补充">
+            <span class="material-symbols-outlined text-[20px]">download</span>
           </button>
         </div>
       </div>
 
-      <div class="flex-1 overflow-auto">
+      <!-- 表格区 -->
+      <div class="flex-1 overflow-auto rounded-b-2xl">
         <table class="w-full text-left border-collapse min-w-[800px]">
-          <thead class="bg-slate-50 sticky top-0 z-10 text-slate-500 border-b border-slate-300">
+          <thead class="bg-surface-container-highest sticky top-0 z-10 text-emerald-900 border-b border-emerald-200">
             <tr>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] border-r border-slate-200">告警编号</th>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] border-r border-slate-200">猪只 ID</th>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] border-r border-slate-200">区域</th>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] border-r border-slate-200">异常类型</th>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] border-r border-slate-200">风险等级</th>
-              <th class="px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em]">时间</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">告警编号</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">猪只 ID</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">区域</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">异常类型</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">风险等级</th>
+              <th class="px-6 py-4 text-[10px] font-bold uppercase tracking-widest">时间</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-200 font-mono">
+          <tbody class="divide-y divide-emerald-100/50">
             <tr v-if="loading && filteredAlerts.length === 0">
-              <td colspan="6" class="p-16 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+              <td colspan="6" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
                 LOADING_ALERTS
               </td>
             </tr>
             <tr v-else-if="filteredAlerts.length === 0">
-              <td colspan="6" class="p-16 text-center text-slate-400 text-xs font-bold uppercase tracking-widest">
+              <td colspan="6" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
                 NO_ALERT_MATCHED
               </td>
             </tr>
             <template v-for="alert in filteredAlerts" :key="alert.id">
-              <tr class="hover:bg-slate-50 transition-colors cursor-pointer border-b-0">
-                <td class="px-6 py-4 text-[11px] text-slate-400 border-r border-slate-100 italic">#{{ String(alert.id).padStart(4, '0') }}</td>
-                <td class="px-6 py-4 border-r border-slate-100 font-bold text-slate-900 text-sm tracking-tighter">
-                  <div class="flex items-center"><span class="w-1.5 h-1.5 bg-blue-600 mr-2"></span>{{ alert.pigId }}</div>
+              <tr class="hover:bg-emerald-50/50 transition-colors cursor-pointer border-b-0 group">
+                <td class="px-6 py-4 text-xs text-emerald-900/40 font-headline italic">#{{ String(alert.id).padStart(4, '0') }}</td>
+                <td class="px-6 py-4 font-bold text-emerald-950 text-sm tracking-tight font-headline">
+                  <div class="flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-secondary mr-2"></span>{{ alert.pigId }}</div>
                 </td>
-                <td class="px-6 py-4 text-slate-600 border-r border-slate-100 text-[11px] font-bold uppercase">{{ alert.area }}</td>
-                <td class="px-6 py-4 border-r border-slate-100 text-xs font-bold text-slate-800 tracking-tight">{{ alert.type }}</td>
-                <td class="px-6 py-4 border-r border-slate-100 text-xs font-bold text-slate-800 tracking-tight font-mono">
+                <td class="px-6 py-4 text-emerald-900/80 text-xs font-bold">{{ alert.area }}</td>
+                <td class="px-6 py-4 text-xs font-bold text-emerald-950 tracking-tight">{{ alert.type }}</td>
+                <td class="px-6 py-4 text-xs font-bold tracking-tight">
                   <div
                     :class="cn(
-                      'inline-flex items-center px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] border-l-4 shadow-sm',
-                      alert.risk === 'Critical' ? 'bg-red-950 text-red-100 border-l-red-500' :
-                        alert.risk === 'High' ? 'bg-orange-900/10 text-orange-700 border-l-orange-500' :
-                          alert.risk === 'Medium' ? 'bg-yellow-900/10 text-yellow-700 border-l-yellow-500' :
-                            'bg-blue-900/10 text-blue-700 border-l-blue-500'
+                      'inline-flex items-center px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full',
+                      alert.risk === 'Critical' ? 'bg-red-100 text-red-700 border border-red-200' :
+                        alert.risk === 'High' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
+                          alert.risk === 'Medium' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                            'bg-blue-100 text-blue-700 border border-blue-200'
                     )"
                   >
-                    <AlertOctagon v-if="alert.risk === 'Critical'" class="w-2.5 h-2.5 mr-1.5" />
+                    <span v-if="alert.risk === 'Critical'" class="material-symbols-outlined text-[12px] mr-1">error</span>
                     {{ getRiskLabel(alert.risk) }}
                   </div>
                 </td>
-                <td class="px-6 py-4 text-slate-500 text-[10px] tabular-nums">{{ alert.timestamp }}</td>
+                <td class="px-6 py-4 text-emerald-900/60 text-[10px] font-mono">{{ alert.timestamp }}</td>
               </tr>
-              <tr v-if="alert.message" class="bg-slate-50/50">
-                <td colspan="6" class="px-6 py-3 border-t border-slate-100 text-xs text-slate-600 leading-relaxed font-sans">
+              <tr v-if="alert.message" class="bg-surface-bright/50">
+                <td colspan="6" class="px-6 py-4 border-t border-emerald-50 text-xs text-emerald-900/80 leading-relaxed font-inter">
                   <div class="flex items-start">
-                    <span class="font-bold text-slate-400 mr-2 shrink-0">诊断说明:</span>
-                    <span>{{ alert.message }}</span>
+                    <span class="material-symbols-outlined text-[16px] text-emerald-900/40 mr-2 shrink-0">info</span>
+                    <span class="flex-1">{{ alert.message }}</span>
                   </div>
                 </td>
               </tr>
@@ -232,12 +237,13 @@ onBeforeUnmount(() => {
         </table>
       </div>
 
-      <div class="px-4 py-2 border-t border-slate-300 bg-slate-50 flex flex-col gap-2 text-[9px] text-slate-400 font-bold uppercase tracking-widest sm:flex-row sm:items-center sm:justify-between">
+      <!-- 底部统计栏 -->
+      <div class="px-6 py-3 border-t border-emerald-200 bg-surface-container-low rounded-b-2xl flex flex-col gap-2 text-[10px] text-emerald-900/60 font-bold uppercase tracking-widest sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center">
-          <Info class="w-3 h-3 mr-2" />
-          {{ loading ? '告警列表同步中' : '实时告警已接入自动播报' }}
+          <span class="material-symbols-outlined text-[14px] mr-2">wifi_tethering</span>
+          {{ loading ? '告警列表同步中' : '系统监控中 - 实时告警已接入自动播报' }}
         </div>
-        <div class="font-mono">TOTAL: {{ filteredAlerts.length }} ALERTS</div>
+        <div class="font-headline tracking-widest">TOTAL: {{ filteredAlerts.length }} ALERTS</div>
       </div>
     </div>
   </div>

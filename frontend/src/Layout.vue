@@ -1,30 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import {
-  AlertTriangle,
-  LayoutDashboard,
-  Menu,
-  MonitorPlay,
-  PiggyBank,
-  TrendingUp,
-  Warehouse,
-  MessageSquare,
-} from 'lucide-vue-next';
 import { cn } from './utils';
 
 const router = useRouter();
 const route = useRoute();
 
-const isSidebarOpen = ref(false);
-
 const navItems = [
-  { id: 'dashboard', label: '总览看板', icon: LayoutDashboard, path: '/dashboard' },
-  { id: 'monitor', label: '视频监控', icon: MonitorPlay, path: '/monitor' },
-  { id: 'growth-curve', label: '生长曲线', icon: TrendingUp, path: '/growth-curve' },
-  { id: 'daily-briefing', label: '每日报告', icon: Warehouse, path: '/daily-briefing' },
-  { id: 'alerts', label: '告警中心', icon: AlertTriangle, path: '/alerts' },
-  { id: 'pig-bot', label: '猪BOT助手', icon: MessageSquare, path: '/pig-bot' },
+  { id: 'dashboard', label: '总览看板', icon: 'dashboard', path: '/dashboard' },
+  { id: 'monitor', label: '视频监控', icon: 'videocam', path: '/monitor' },
+  { id: 'growth-curve', label: '生长曲线', icon: 'trending_up', path: '/growth-curve' },
+  { id: 'daily-briefing', label: '每日报告', icon: 'analytics', path: '/daily-briefing' },
+  { id: 'alerts', label: '告警中心', icon: 'warning', path: '/alerts' },
+  { id: 'pig-bot', label: '猪BOT助手', icon: 'smart_toy', path: '/pig-bot' },
 ];
 
 const currentPath = computed(() => route.path);
@@ -39,54 +27,71 @@ function handleNavigate(path: string) {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#f1f2f6] flex font-sans text-slate-800">
-    <div
-      class="fixed top-8 left-8 z-40 bg-white/60 backdrop-blur-md p-3 rounded-2xl shadow-sm cursor-pointer hover:bg-white hover:shadow-md transition-all duration-300 pointer-events-auto"
-      @mouseenter="isSidebarOpen = true"
-    >
-      <Menu class="w-6 h-6 text-slate-700" />
-    </div>
-
-    <div
-      :class="cn(
-        'w-64 h-screen bg-white/90 backdrop-blur-2xl fixed left-0 top-0 flex flex-col z-50 transition-all duration-500 shadow-[20px_0_60px_rgba(0,0,0,0.05)] overflow-hidden',
-        isSidebarOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none'
-      )"
-      @mouseleave="isSidebarOpen = false"
-    >
-      <div class="h-24 flex items-center px-8 flex-shrink-0 mt-4">
-        <PiggyBank class="w-8 h-8 text-[#0f172a] mr-3" />
-        <h1 class="text-2xl font-black text-[#0f172a] tracking-tight">两头乌</h1>
+  <div class="flex flex-col min-h-[100dvh]">
+    <header class="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md flex justify-between items-center px-8 h-14 border-b border-emerald-200">
+      <div class="flex items-center gap-4">
+        <img alt="掌上明猪" class="h-8 object-contain" src="/图片1.png"/>
+        <div class="h-5 w-[1px] bg-emerald-300"></div>
+        <h2 class="font-headline text-base font-bold text-emerald-900">两头乌智能养殖</h2>
       </div>
+      <div class="hidden md:flex items-center gap-8">
+        <nav class="flex items-center gap-6 font-headline text-xs font-bold">
+          <router-link to="/dashboard" :class="currentPath === '/dashboard' ? 'text-secondary' : 'text-on-surface-variant hover:text-secondary transition-colors'">生猪遥测</router-link>
+          <router-link to="/monitor" :class="currentPath === '/monitor' ? 'text-secondary' : 'text-on-surface-variant hover:text-secondary transition-colors'">场域分析</router-link>
+          <router-link to="/alerts" :class="currentPath === '/alerts' ? 'text-secondary' : 'text-on-surface-variant hover:text-secondary transition-colors'">环境告警</router-link>
+        </nav>
+        <div class="flex items-center gap-4 border-l border-emerald-200 pl-6">
+          <span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer hover:text-secondary">sensors</span>
+          <span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer hover:text-secondary">notifications</span>
+          <img alt="Avatar" class="w-7 h-7 rounded-full border border-primary/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsvcPIiqtWe6IPYn76xNYm8l2GfeFjBBZF5y-G8_1OSEjj2eaC-v7kjPbp9TjRhIyV-97o94u2Lo1Fn3U5zxDt0mUykSfgcnqgG1caAs2Q94NwVIXxJyzc-mbNcTBkFg9YWrH4juffdUOUXbsMZyDd870lvmlXngGvty5TXsiTYYvQeb3qq82nxZl9sFS5MXQFtPoKjyPjN0imKPL8o30Gv4Kb6dvT9znRdZqIZtYv6nH_aSmtNAFoHxFapziZ2bas0vl3Wzy_zxPj"/>
+        </div>
+      </div>
+    </header>
 
-      <nav class="flex-1 px-4 space-y-1 overflow-y-auto pb-6">
-        <div v-for="item in navItems" :key="item.id">
+    <aside class="fixed left-0 h-full w-60 border-r border-emerald-200 bg-white/80 backdrop-blur-xl flex flex-col pt-24 pb-8 px-4 z-40 hidden md:flex">
+      <div class="mb-6 px-2">
+        <h2 class="font-headline text-emerald-900 font-bold text-base">扇区监控</h2>
+        <p class="text-on-surface-variant/80 text-[9px] font-bold uppercase tracking-widest">活跃数据流: 1,248</p>
+      </div>
+      
+      <nav class="flex-1 space-y-1">
+        <template v-for="item in navItems" :key="item.id">
           <button
             @click="handleNavigate(item.path)"
             :class="cn(
-              'w-full flex items-center px-4 py-3 rounded-2xl transition-all duration-300 group',
-              isItemActive(item)
-                ? 'bg-blue-50/80 shadow-sm text-blue-700 font-bold'
-                : 'text-slate-500 hover:text-black hover:bg-slate-100/50 font-medium'
+              'w-full flex items-center gap-3 px-3 py-2 font-inter text-sm transition-all duration-300 text-left outline-none',
+              isItemActive(item) 
+                ? 'text-secondary bg-emerald-100/50 border-r-2 border-secondary font-semibold' 
+                : 'text-on-surface-variant hover:text-secondary hover:bg-emerald-50 font-medium'
             )"
           >
-            <component
-              :is="item.icon"
-              :class="cn(
-                'w-5 h-5 mr-4 transition-colors',
-                isItemActive(item) ? 'text-blue-700' : 'text-slate-400 group-hover:text-black'
-              )"
-            />
-            <span class="flex-1 text-sm text-left">{{ item.label }}</span>
+            <span class="material-symbols-outlined text-lg">{{ item.icon }}</span>
+            <span class="flex-1">{{ item.label }}</span>
           </button>
-        </div>
+        </template>
       </nav>
-    </div>
+      
+      <div class="mt-auto space-y-1">
+          <a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant/80 hover:text-secondary font-inter text-xs font-medium" href="#">
+            <span class="material-symbols-outlined text-sm">memory</span>
+            <span>系统诊断</span>
+          </a>
+          <a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant/80 hover:text-secondary font-inter text-xs font-medium" href="#">
+            <span class="material-symbols-outlined text-sm">admin_panel_settings</span>
+            <span>后台管理</span>
+          </a>
+        </div>
+    </aside>
 
-    <div class="flex-1 flex flex-col px-4 md:px-8 pt-6 pb-8 transition-all duration-500 w-full">
-      <main class="flex-1 bg-transparent rounded-[2rem] relative z-10 w-full mx-auto">
-        <router-view />
-      </main>
+    <main class="md:pl-60 pt-14 flex-1 w-full bg-transparent mx-auto relative z-10 transition-all duration-500">
+      <router-view />
+    </main>
+
+    <div class="fixed bottom-8 right-8 z-50">
+      <button class="group flex items-center gap-3 bg-secondary text-white px-6 py-4 rounded-full font-headline font-bold shadow-2xl shadow-secondary/40 hover:scale-105 active:scale-95 transition-all border-none">
+        <span class="material-symbols-outlined">add</span>
+        <span class="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap">上报异常项</span>
+      </button>
     </div>
   </div>
 </template>

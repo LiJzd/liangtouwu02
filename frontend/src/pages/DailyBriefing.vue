@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { apiService } from '../api';
-import { Calendar, FileText, RefreshCw, AlertCircle, ChevronRight, Download } from 'lucide-vue-next';
 import { marked } from 'marked';
 import { cn } from '../utils';
 
@@ -38,11 +37,9 @@ const triggerNew = async () => {
     console.log('简报生成响应:', res);
     if (res) {
       await loadHistory();
-      // 确保选中的简报有content字段
       if (res.content) {
         selectedBriefing.value = res;
       } else {
-        // 如果返回的数据没有content，尝试从历史记录中找到
         const latest = history.value.find(item => item.id === res.id);
         selectedBriefing.value = latest || res;
       }
@@ -72,14 +69,14 @@ onMounted(() => {
 <template>
   <div class="h-full flex flex-col space-y-6">
     <!-- 顶部标题区 -->
-    <div class="flex items-center justify-between bg-white p-6 border border-slate-200 shadow-sm">
-      <div class="flex items-center space-x-4">
-        <div class="p-3 bg-blue-600">
-          <FileText class="w-6 h-6 text-white" />
+    <div class="flex items-center justify-between bg-white/95 backdrop-blur-md p-6 rounded-2xl border border-emerald-200 shadow-sm">
+      <div class="flex items-center space-x-6">
+        <div class="w-14 h-14 bg-gradient-to-br from-emerald-400 to-secondary rounded-xl flex items-center justify-center shadow-lg shadow-secondary/20">
+          <span class="material-symbols-outlined text-white text-3xl">description</span>
         </div>
         <div>
-          <h2 class="text-xl font-bold text-slate-900">每日诊断简报</h2>
-          <p class="text-xs text-slate-500 font-mono italic">DAILY INTELLIGENT BRIEFING & ANOMALY DETECTION</p>
+          <h2 class="text-2xl font-headline font-bold text-emerald-950 tracking-tight">每日诊断简报</h2>
+          <p class="text-xs text-emerald-900/60 font-inter font-bold uppercase tracking-[0.2em] mt-1">Daily Intelligent Briefing</p>
         </div>
       </div>
       
@@ -87,10 +84,10 @@ onMounted(() => {
         <button 
           @click="triggerNew"
           :disabled="triggering"
-          class="flex items-center space-x-2 px-4 py-2 bg-slate-900 text-white text-xs font-bold hover:bg-black transition-all disabled:opacity-50"
+          class="flex items-center space-x-2 px-6 py-3 bg-emerald-950 text-white rounded-xl text-[13px] font-bold uppercase tracking-widest hover:-translate-y-0.5 hover:shadow-lg transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
         >
-          <RefreshCw :class="cn('w-4 h-4', triggering && 'animate-spin')" />
-          <span>{{ triggering ? '正在生成智能简报...' : '手动触发今日简报' }}</span>
+          <span :class="cn('material-symbols-outlined text-lg', triggering && 'animate-spin')">refresh</span>
+          <span>{{ triggering ? '正在生成智能简报...' : '手动触发今日扫描' }}</span>
         </button>
       </div>
     </div>
@@ -98,67 +95,66 @@ onMounted(() => {
     <!-- 主体内容区 -->
     <div class="flex-1 flex space-x-6 min-h-0">
       <!-- 左侧：历史列表 -->
-      <div class="w-80 flex flex-col bg-white border border-slate-200 shadow-sm min-h-0">
-        <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史报告记录</span>
-          <Calendar class="w-3.5 h-3.5 text-slate-400" />
+      <div class="w-80 flex flex-col bg-white/90 backdrop-blur-md rounded-2xl border border-emerald-200 shadow-sm min-h-0 overflow-hidden">
+        <div class="p-5 border-b border-emerald-100 flex items-center justify-between bg-surface-container-low">
+          <span class="text-[10px] font-bold text-emerald-900/40 uppercase tracking-widest">历史告警报告</span>
+          <span class="material-symbols-outlined text-emerald-900/40 text-[18px]">calendar_month</span>
         </div>
         
         <div class="flex-1 overflow-y-auto">
-          <div v-if="loading" class="p-8 text-center">
-            <RefreshCw class="w-6 h-6 animate-spin text-slate-300 mx-auto" />
+          <div v-if="loading" class="p-12 flex justify-center">
+            <span class="material-symbols-outlined text-4xl animate-spin text-emerald-200">progress_activity</span>
           </div>
-          <div v-else-if="history.length === 0" class="p-8 text-center">
-            <AlertCircle class="w-8 h-8 text-slate-200 mx-auto mb-2" />
-            <p class="text-xs text-slate-400">暂无简报记录</p>
+          <div v-else-if="history.length === 0" class="p-12 text-center flex flex-col items-center">
+            <span class="material-symbols-outlined text-5xl text-emerald-100 mb-3">error_outline</span>
+            <p class="text-sm font-bold text-emerald-900/40 uppercase tracking-widest">暂无简报记录</p>
           </div>
           <div 
             v-for="item in history" 
             :key="item.id"
             @click="handleSelect(item)"
             :class="cn(
-              'p-4 border-b border-slate-50 cursor-pointer transition-all hover:bg-slate-50 group relative',
-              selectedBriefing?.id === item.id ? 'bg-blue-50/50' : ''
+              'p-5 border-b border-emerald-50 cursor-pointer transition-all hover:bg-emerald-50 group relative',
+              selectedBriefing?.id === item.id ? 'bg-surface-bright/80' : ''
             )"
           >
-            <div v-if="selectedBriefing?.id === item.id" class="absolute left-0 top-0 bottom-0 w-1 bg-blue-600"></div>
-            <div class="flex justify-between items-start mb-1">
-              <span :class="cn('text-sm font-bold', selectedBriefing?.id === item.id ? 'text-blue-700' : 'text-slate-700')">
+            <div v-if="selectedBriefing?.id === item.id" class="absolute left-0 top-0 bottom-0 w-1.5 bg-secondary"></div>
+            <div class="flex justify-between items-center mb-2">
+              <span :class="cn('text-[15px] font-bold font-headline', selectedBriefing?.id === item.id ? 'text-secondary' : 'text-emerald-900')">
                 {{ item.briefingDate }}
               </span>
-              <ChevronRight class="w-3 h-3 text-slate-300 group-hover:translate-x-1 transition-transform" />
+              <span class="material-symbols-outlined text-[16px] text-emerald-200 group-hover:translate-x-1 transition-transform group-hover:text-secondary">chevron_right</span>
             </div>
-            <p class="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
-              {{ item.summary || '点击查看详情...' }}
+            <p class="text-xs text-emerald-900/60 font-inter line-clamp-2 leading-relaxed">
+              {{ item.summary || '智能分析已生成，点击查看详细诊断说明...' }}
             </p>
           </div>
         </div>
       </div>
 
       <!-- 右侧：报告展示 -->
-      <div class="flex-1 bg-white border border-slate-200 shadow-sm flex flex-col min-h-0">
+      <div class="flex-1 bg-white/95 backdrop-blur-md rounded-2xl border border-emerald-200 shadow-sm flex flex-col min-h-0 overflow-hidden">
         <div v-if="selectedBriefing" class="flex-1 flex flex-col min-h-0">
-          <div class="p-6 border-b border-slate-100 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-              <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-tighter">Report Active</span>
-              <h3 class="text-lg font-bold text-slate-800">{{ selectedBriefing.briefingDate }} 场内行为分析简报</h3>
+          <div class="p-6 border-b border-emerald-100 flex items-center justify-between bg-surface-container-low">
+            <div class="flex items-center space-x-4">
+              <span class="px-3 py-1 bg-secondary text-white text-[10px] font-bold uppercase tracking-[0.2em] rounded-md">Report Active</span>
+              <h3 class="text-xl font-headline font-bold text-emerald-950">{{ selectedBriefing.briefingDate }} 场内行为分析简报</h3>
             </div>
-            <button class="flex items-center space-x-2 text-xs text-slate-400 hover:text-slate-600">
-              <Download class="w-4 h-4" />
-              <span>导出 PDF</span>
+            <button class="flex items-center space-x-2 px-4 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-emerald-900/60 hover:text-secondary hover:border-secondary transition-colors">
+              <span class="material-symbols-outlined text-[16px]">download</span>
+              <span class="uppercase tracking-widest">导出 PDF</span>
             </button>
           </div>
           
-          <div class="flex-1 overflow-y-auto p-10 prose prose-slate max-w-none prose-sm">
+          <!-- Markdown 阅读区 -->
+          <div class="flex-1 overflow-y-auto p-10 prose prose-emerald max-w-none prose-sm custom-scrollbar">
             <div class="markdown-body" v-html="marked(selectedBriefing.content || '')"></div>
           </div>
         </div>
 
-        <div v-else class="flex-1 flex flex-center items-center justify-center bg-slate-50/30">
-          <div class="text-center">
-            <FileText class="w-16 h-16 text-slate-100 mx-auto mb-4" />
-            <p class="text-slate-400 text-sm">请从左侧选择一个日期查看智能简报</p>
-          </div>
+        <div v-else class="flex-1 flex flex-col items-center justify-center bg-surface-bright/30">
+          <span class="material-symbols-outlined text-[80px] text-emerald-100 mb-6 drop-shadow-sm">description</span>
+          <p class="text-emerald-900/40 text-[15px] font-headline font-bold uppercase tracking-widest">请从左侧选择一个日期查看智能简报</p>
         </div>
       </div>
     </div>
@@ -169,26 +165,43 @@ onMounted(() => {
 .markdown-body :deep(h1), 
 .markdown-body :deep(h2), 
 .markdown-body :deep(h3) {
-  @apply font-bold text-slate-900 border-b-0 pb-0 mt-8 mb-4;
+  @apply font-headline font-bold text-emerald-950 border-b-0 pb-0 mt-8 mb-4;
+}
+
+.markdown-body :deep(h1) {
+  @apply text-3xl mb-8 border-b border-emerald-100 pb-4;
 }
 
 .markdown-body :deep(h2) {
-  @apply text-lg border-l-4 border-blue-600 pl-3;
+  @apply text-xl border-l-[6px] border-secondary pl-4 bg-emerald-50/50 py-2 rounded-r-lg;
 }
 
 .markdown-body :deep(strong) {
-  @apply text-blue-700 bg-blue-50 px-1;
+  @apply text-emerald-800 bg-emerald-100/50 px-1.5 py-0.5 rounded font-bold;
 }
 
 .markdown-body :deep(ul) {
-  @apply space-y-2;
+  @apply space-y-3 pl-6 marker:text-secondary;
 }
 
 .markdown-body :deep(li) {
-  @apply text-slate-600;
+  @apply text-emerald-900 flex-1 font-inter;
 }
 
 .markdown-body :deep(blockquote) {
-  @apply bg-slate-50 border-l-4 border-slate-300 py-2 px-4 italic text-slate-500 text-xs;
+  @apply bg-surface-container-low border-l-[6px] border-emerald-300 py-3 px-6 italic text-emerald-900/70 text-sm rounded-r-xl shadow-sm my-6;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  background-color: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(16, 185, 129, 0.2);
+  border-radius: 99px;
+  border: 2px solid #fff;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(16, 185, 129, 0.4);
 }
 </style>
