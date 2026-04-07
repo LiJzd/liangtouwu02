@@ -39,6 +39,13 @@ export type InspectionStreamEvent =
     | { event: 'done'; data: { code?: number; message?: string; pig_id?: string; timestamp?: string } }
     | { event: 'error'; data: { code?: number; message?: string; detail?: string; pig_id?: string } };
 
+// 每日简报流事件类型（对接 /inspection/briefing/stream）
+export type BriefingStreamEvent =
+    | { event: 'status'; data: { message?: string } }
+    | { event: 'chunk'; data: { text?: string } }
+    | { event: 'done'; data: { code?: number; message?: string; timestamp?: string } }
+    | { event: 'error'; data: { code?: number; message?: string; detail?: string } };
+
 // Mock 数据：后端未启动时使用
 
 export const MOCK_DASHBOARD = {
@@ -501,19 +508,85 @@ export const apiService = {
         };
     },
 
+    /**
+     * 流式生成每日简报（直连 AI-service /inspection/briefing/stream）
+     * 绕过 Java 后端代理，直接对接 AI 算法服务，实现打字机效果。
+     * 注意：此接口生成的简报不会自动入库，入库由 triggerBriefing 负责。
+     */
+    streamBriefing: async (onEvent: (event: import('./api').BriefingStreamEvent) => void) => {
+        // Mock 模式下模拟流式输出
+        if (!USE_REAL_API) {
+            onEvent({ event: 'status', data: { message: '正在激活模拟简报链路...' } });
+            await delay(600);
+            const today = new Date().toISOString().split('T')[0];
+            const mockContent = generateMockBriefingContent(today, 0);
+            onEvent({ event: 'status', data: { message: '正在构建简报内容帧...' } });
+            const chunkSize = 20;
+            for (let i = 0; i < mockContent.length; i += chunkSize) {
+                onEvent({ event: 'chunk', data: { text: mockContent.slice(i, i + chunkSize) } });
+                await delay(30);
+            }
+            onEvent({ event: 'done', data: { code: 200, message: '简报生成完成', timestamp: new Date().toISOString() } });
+            return;
+        }
+
+        // 真实模式：直连 AI-service 流式端点
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+        const resp = await fetch(`${baseUrl}/inspection/briefing/stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        if (!resp.ok || !resp.body) throw new Error(`简报流连接失败: ${resp.status}`);
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        const parseBlock = (block: string) => {
+            const lines = block.split('\n');
+            let eventName = 'message';
+            const dataParts: string[] = [];
+            for (const line of lines) {
+                if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+            }
+            if (!dataParts.length) return;
+            try {
+                const data = JSON.parse(dataParts.join('\n'));
+                onEvent({ event: eventName as any, data });
+            } catch { /* ignore malformed frames */ }
+        };
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let sep = buffer.indexOf('\n\n');
+            while (sep !== -1) {
+                parseBlock(buffer.slice(0, sep));
+                buffer = buffer.slice(sep + 2);
+                sep = buffer.indexOf('\n\n');
+            }
+        }
+    },
+
     // 同步生成 AI 报告（耗时较长）
     generatePigInspectionReport: async (pigId: string) => {
+
         if (!USE_REAL_API) {
             await delay(1500);
             return buildMockPigInspectionReport(pigId);
         }
 
-        const res = await http.post(
-            '/inspection/generate',
-            { pig_id: pigId },
-            { timeout: 180000 } // AI 分析较慢，此处将超时时间延长至 3 分钟
-        );
-        return res.data;
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+        const resp = await fetch(`${baseUrl}/inspection/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pig_id: pigId })
+        });
+        if (!resp.ok) throw new Error(`同步生成失败: ${resp.status}`);
+        const data = await resp.json();
+        return data;
     },
 
     // 流式生成报告（SSE 逐字打字机效果）
@@ -540,7 +613,7 @@ export const apiService = {
         }
 
         // --- 真实 API 高级流处理逻辑 ---
-        const baseUrl = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
         const resp = await fetch(`${baseUrl}/inspection/generate/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

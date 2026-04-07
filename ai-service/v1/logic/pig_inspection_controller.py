@@ -1,6 +1,12 @@
 """
-生猪检测报告控制器。
-Growth-curve 页面通过此接口调用中央 Agent 管道生成报告。
+生猪检测报告控制器（重构版）。
+
+改造要点：
+- /generate 和 /generate/stream：不再在控制器层硬编码 prompt，
+  改为发出标准意图语句，由 SupervisorAgent 路由到 GrowthCurveAgent。
+- /briefing：废弃旧的 pig_agent.run_farm_daily_briefing，
+  改为通过意图路由到 BriefingAgent，结果封装为 Java 后端兼容格式。
+- /briefing/stream：新增流式简报端点，前端触发时逐字推送简报内容。
 """
 
 from __future__ import annotations
@@ -8,8 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import sys
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -20,19 +25,19 @@ from pydantic import BaseModel, Field
 from v1.logic.multi_agent_controller import get_orchestrator
 from v1.logic.multi_agent_core import AgentContext
 
-# 导入逻辑处理
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../pig_rag"))
-
 router = APIRouter()
 logger = logging.getLogger("pig_inspection")
 
 
+# ─── 请求 / 响应模型 ────────────────────────────────────────────
+
+
 class InspectionRequest(BaseModel):
-    pig_id: str = Field(..., min_length=1, max_length=64, description="Pig ID")
+    pig_id: str = Field(..., min_length=1, max_length=64)
 
 
 class InspectionResponse(BaseModel):
-    code: int = Field(default=200, description="Business status code")
+    code: int = Field(default=200)
     message: str = Field(default="Report generated successfully")
     pig_id: str
     report: str
@@ -47,104 +52,102 @@ class ErrorResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
-def _format_sse(event: str, data: dict) -> str:
+# ─── 工具函数 ────────────────────────────────────────────────────
+
+
+def _fmt_sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _build_growth_curve_prompt(pig_id: str) -> str:
-    """构建用于请求 Data Agent 的 Prompt，要求输出历史 + 预测数据的 Markdown 格式"""
-    return f"""
-请为猪只 {pig_id} 生成一份"生长曲线预测报告"。
-
-这是 growth-curve 页面发起的内部请求，必须走 agent 工具链，不要跳过工具直接回答。
-
-执行要求：
-1. 先调用 get_pig_info_by_id 查询该猪只档案，获取 lifecycle 数据（含喂食/饮水记录）。
-2. 再调用 query_pig_growth_prediction，优先使用 {{"pig_id":"{pig_id}"}} 这种入参，获取未来预测轨迹。
-3. 如果工具返回的是 JSON，请你自己整理成 Markdown，不要把原始 JSON 直接贴给用户。
-
-输出格式必须严格按以下结构：
-
-## 基本信息
-- **猪只ID**：{pig_id}
-- **品种**：（从工具结果填写）
-- **当前月龄**：（从工具结果填写）月
-- **当前体重**：（从工具结果填写）kg
-
-## 生长趋势分析
-（2到4条简短的预测结论和建议）
-
-### 历史实测数据 (Historical)
-| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |
-| --- | --- | --- | --- | --- | --- |
-（从 get_pig_info_by_id 返回的 lifecycle 字段逐月填写，有几个月填几行，绝不编造）
-（月份只写数字，体重只写数字，喂食/饮水字段写整数）
-
-### 预测生长曲线数据 (Monthly)
-| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |
-| --- | --- | --- |
-（从 query_pig_growth_prediction 获取，历史月份标注"已记录"，未来月份标注"预测"，当前月标注"当前"；按月份升序排列）
-
-## AI 建议
-（3条针对该猪只当前状态的具体建议，结合喂食/饮水数据给出）
-
-严格要求：
-- 必须同时输出以上两个表格，缺一不可。
-- 不要返回 JSON 格式内容。
-- 所有数字列只写纯数字，不含单位。
-- 回复全程使用中文。
-- lifecycle 有几个月的数据就填几行，不要编造不存在月份的数据。
-""".strip()
+def _build_growth_curve_intent(pig_id: str) -> str:
+    """构造生长曲线任务的意图语句，让 Supervisor 路由到 GrowthCurveAgent。"""
+    return (
+        f"请为猪只 {pig_id} 生成生长曲线报告。"
+        f"这是来自生长曲线页面的内部请求（growth_curve），"
+        f"必须通过工具链获取真实数据，不得跳过工具直接回答。"
+    )
 
 
-async def _run_inspection_via_agent(pig_id: str) -> str:
-    client_id = f"growth_curve_{pig_id}"
+def _build_briefing_intent() -> str:
+    """构造每日简报任务的意图语句，让 Supervisor 路由到 BriefingAgent。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    return (
+        f"请生成今日 {today} 的两头乌养殖场每日简报（briefing）。"
+        f"这是来自每日简报页面的内部请求，"
+        f"必须调用工具获取真实的全场统计、环境和健康数据。"
+    )
+
+
+# ─── 核心执行函数 ────────────────────────────────────────────────
+
+
+async def _run_growth_curve_via_agent(pig_id: str) -> str:
+    """通过意图路由让 GrowthCurveAgent 生成生长曲线报告。"""
     context = AgentContext(
         user_id=f"growth_curve_{pig_id}",
-        user_input=_build_growth_curve_prompt(pig_id),
+        user_input=_build_growth_curve_intent(pig_id),
         chat_history=[],
         metadata={
             "source": "growth_curve_page",
             "report_type": "growth_curve",
             "pig_id": pig_id,
         },
+        client_id=f"growth_curve_{pig_id}",
+        image_urls=None,
+    )
+    logger.info("growth_curve: routing via SupervisorAgent pig_id=%s", pig_id)
+    result = await get_orchestrator().execute(context)
+    logger.info(
+        "growth_curve: worker=%s success=%s error=%s",
+        result.worker_name, result.success, result.error,
+    )
+    answer = (result.answer or "").strip()
+    if not result.success or not answer:
+        return f"error: {result.error or 'agent returned empty answer'}"
+    return answer
+
+
+async def _run_briefing_via_agent() -> str:
+    """通过意图路由让 BriefingAgent 生成每日简报。"""
+    client_id = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    context = AgentContext(
+        user_id="briefing_system",
+        user_input=_build_briefing_intent(),
+        chat_history=[],
+        metadata={
+            "source": "briefing_page",
+            "report_type": "daily_briefing",
+        },
         client_id=client_id,
         image_urls=None,
     )
-
-    logger.info("Generating report for pig_id=%s", pig_id)
+    logger.info("briefing: routing via SupervisorAgent")
     result = await get_orchestrator().execute(context)
     logger.info(
-        "growth_curve multi-agent finished pig_id=%s success=%s worker=%s error=%s",
-        pig_id,
-        result.success,
-        result.worker_name,
-        result.error,
+        "briefing: worker=%s success=%s error=%s",
+        result.worker_name, result.success, result.error,
     )
-
     answer = (result.answer or "").strip()
     if not result.success or not answer:
-        detail = result.error or "agent returned empty answer"
-        return f"error: {detail}"
+        return f"error: {result.error or 'agent returned empty answer'}"
     return answer
+
+
+# ─── 生长曲线端点 ────────────────────────────────────────────────
 
 
 @router.post("/generate", response_model=InspectionResponse, tags=["生猪检测"])
 async def generate_inspection_report(request: InspectionRequest):
     try:
-        report = await _run_inspection_via_agent(request.pig_id)
-
+        report = await _run_growth_curve_via_agent(request.pig_id)
         if not report or report.startswith("error:"):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"agent report generation failed: {report}",
             )
-
         return InspectionResponse(
-            code=200,
-            message="成功",
-            pig_id=request.pig_id,
-            report=report,
+            code=200, message="成功",
+            pig_id=request.pig_id, report=report,
             timestamp=datetime.now(),
         )
     except HTTPException:
@@ -158,82 +161,80 @@ async def generate_inspection_report(request: InspectionRequest):
 
 @router.post("/generate/stream", tags=["生猪检测"])
 async def generate_inspection_report_stream(request: InspectionRequest):
-    async def event_generator():
+    async def _gen():
         try:
-            yield _format_sse("status", {"message": "正在分析数据..."})
-
-            report = await _run_inspection_via_agent(request.pig_id)
-
+            yield _fmt_sse("status", {"message": "正在路由到生长曲线分析专家..."})
+            report = await _run_growth_curve_via_agent(request.pig_id)
             if not report or report.startswith("error:"):
-                yield _format_sse(
-                    "error",
-                    {
-                        "code": 500,
-                        "message": "分析过程失败",
-                        "detail": report or "生成内容为空",
-                        "pig_id": request.pig_id,
-                    },
-                )
+                yield _fmt_sse("error", {
+                    "code": 500, "message": "分析过程失败",
+                    "detail": report or "生成内容为空",
+                    "pig_id": request.pig_id,
+                })
                 return
-
-            yield _format_sse("status", {"message": "正在生成生长曲线报告..."})
-
+            yield _fmt_sse("status", {"message": "正在推送生长曲线报告..."})
             chunk_size = 120
+            logger.info("growth_curve: starting stream delivery for pig_id=%s, report_len=%d", request.pig_id, len(report))
+            
             for i in range(0, len(report), chunk_size):
-                yield _format_sse("chunk", {"text": report[i : i + chunk_size]})
+                chunk = report[i: i + chunk_size]
+                yield _fmt_sse("chunk", {"text": chunk})
                 await asyncio.sleep(0.01)
-
-            yield _format_sse(
-                "done",
-                {
-                    "code": 200,
-                    "message": "分析流传输完成",
-                    "pig_id": request.pig_id,
-                    "timestamp": datetime.now().isoformat(),
-                },
-            )
+                
+            logger.info("growth_curve: stream delivery completed for pig_id=%s", request.pig_id)
+            yield _fmt_sse("done", {
+                "code": 200, "message": "分析流传输完成",
+                "pig_id": request.pig_id,
+                "timestamp": datetime.now().isoformat(),
+            })
         except Exception as exc:
-            yield _format_sse(
-                "error",
-                {
-                    "code": 500,
-                    "message": "算法节点不可用",
-                    "detail": str(exc),
-                    "pig_id": request.pig_id,
-                },
-            )
+            yield _fmt_sse("error", {
+                "code": 500, "message": "算法节点不可用",
+                "detail": str(exc),
+                "pig_id": request.pig_id,
+            })
 
     return StreamingResponse(
-        event_generator(),
+        _gen(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
 
-@router.post("/briefing", tags=["生猪检测"])
+# ─── 每日简报端点 ────────────────────────────────────────────────
+
+
+@router.post("/briefing", tags=["每日简报"])
 async def generate_farm_briefing():
+    """
+    手动触发每日简报生成。
+
+    通过 SupervisorAgent→BriefingAgent 意图路由，
+    返回格式与原接口兼容（供 Java 后端存入数据库）。
+    """
     try:
-        from pig_agent import run_farm_daily_briefing
-
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, run_farm_daily_briefing)
-
-        if not result or (isinstance(result, dict) and result.get("report", "").startswith("error")):
+        report = await _run_briefing_via_agent()
+        if not report or report.startswith("error:"):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"briefing engine failed: {result}",
+                detail=f"briefing generation failed: {report}",
             )
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        # 提取简报第一段作为 summary
+        first_para = ""
+        for line in report.split("\n"):
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and not stripped.startswith("*"):
+                first_para = stripped[:120]
+                break
 
         return {
             "code": 200,
             "message": "每日简报生成成功",
             "data": {
-                "report": result["report"],
-                "summary": result["summary"],
+                "report": report,
+                "summary": first_para or f"{today} 每日简报已生成",
                 "timestamp": datetime.now().isoformat(),
             },
         }
@@ -246,11 +247,56 @@ async def generate_farm_briefing():
         ) from exc
 
 
+@router.post("/briefing/stream", tags=["每日简报"])
+async def generate_farm_briefing_stream():
+    """
+    流式生成每日简报（SSE），前端触发后以打字机效果推送内容。
+    """
+    async def _gen():
+        try:
+            yield _fmt_sse("status", {"message": "正在路由到每日简报生成专家..."})
+            report = await _run_briefing_via_agent()
+            if not report or report.startswith("error:"):
+                yield _fmt_sse("error", {
+                    "code": 500, "message": "简报生成失败",
+                    "detail": report or "生成内容为空",
+                })
+                return
+            yield _fmt_sse("status", {"message": "正在推送今日简报..."})
+            chunk_size = 80
+            logger.info("briefing: starting stream delivery, report_len=%d", len(report))
+            
+            for i in range(0, len(report), chunk_size):
+                chunk = report[i: i + chunk_size]
+                yield _fmt_sse("chunk", {"text": chunk})
+                await asyncio.sleep(0.01)
+                
+            logger.info("briefing: stream delivery completed")
+            yield _fmt_sse("done", {
+                "code": 200, "message": "简报流传输完成",
+                "timestamp": datetime.now().isoformat(),
+            })
+        except Exception as exc:
+            yield _fmt_sse("error", {
+                "code": 500, "message": "算法节点不可用", "detail": str(exc),
+            })
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+# ─── 健康检查 ────────────────────────────────────────────────────
+
+
 @router.get("/health", tags=["系统监控"])
 async def health_check():
     return {
         "status": "UP",
         "service": "Liangtouwu-Report-Engine",
-        "arch": "Agent-driven reporting",
+        "arch": "Supervisor→Agent routing",
+        "workers": ["growth_curve_agent", "briefing_agent"],
         "timestamp": datetime.now(),
     }

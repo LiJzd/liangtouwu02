@@ -191,8 +191,10 @@ class AgentResult:
 SUPERVISOR_PROMPT = """你是智能体调度中心。根据用户问题，选择最合适的专家处理。
 
 可用专家：
-- vet_agent: 兽医诊断、疾病分析、用药建议、健康评估
-- data_agent: 猪只档案查询、生长曲线预测、数据统计、列表查询
+- vet_agent: 兽医诊断、疾病分析、用药建议、健康评估、症状判断
+- data_agent: 猪只档案查询、通用数据统计、猪只列表查询
+- growth_curve_agent: 生长曲线报告、体重预测、月龄生长分析（针对单头猪只）
+- briefing_agent: 每日简报、全场日报、农场综合状态报告、日常巡检汇总
 - perception_agent: 视频监控、图像识别、现场情况、截图分析
 
 规则：
@@ -200,6 +202,7 @@ SUPERVISOR_PROMPT = """你是智能体调度中心。根据用户问题，选择
 2. 如果不需要专家（如闲聊、问候），输出 "direct_reply"
 3. 一次只选一个专家
 4. 优先选择最专业的专家
+5. 涉及单只猪生长/体重预测时选 growth_curve_agent；涉及全场综合日报时选 briefing_agent
 
 用户问题：{user_input}
 
@@ -266,7 +269,7 @@ class SupervisorAgent:
             worker_name = response.choices[0].message.content.strip().lower()
             
             # 验证返回值
-            valid_workers = ["vet_agent", "data_agent", "perception_agent", "direct_reply"]
+            valid_workers = ["vet_agent", "data_agent", "perception_agent", "growth_curve_agent", "briefing_agent", "direct_reply"]
             if worker_name not in valid_workers:
                 logger.warning(f"Supervisor 返回无效 worker: {worker_name}，降级到规则引擎")
                 return self._rule_based_route(user_input)
@@ -289,31 +292,49 @@ class SupervisorAgent:
     def _rule_based_route(self, user_input: str) -> str:
         """规则引擎兜底路由"""
         text = user_input.lower()
-        
+
+        # 每日简报关键词（优先最高）
+        briefing_keywords = [
+            "每日简报", "日报", "今日简报", "全场简报", "每日诊断简报",
+            "farm_daily_briefing", "daily_briefing", "briefing",
+            "全场报告", "场内简报", "日常巡检汇总",
+        ]
+        if any(k in text for k in briefing_keywords):
+            return "briefing_agent"
+
+        # 生长曲线关键词（单只猪分析）
+        growth_curve_keywords = [
+            "生长曲线", "生长曲线报告", "growth_curve", "growth curve",
+            "体重预测", "月增重", "生长分析", "喂食趋势", "饮水趋势",
+            "日增重", "生长预测",
+        ]
+        if any(k in text for k in growth_curve_keywords):
+            return "growth_curve_agent"
+
         # 兽医诊断关键词
         vet_keywords = [
-            "病", "诊断", "治疗", "用药", "症状", "拉稀", "咳嗽", 
+            "病", "诊断", "治疗", "用药", "症状", "拉稀", "咳嗽",
             "发烧", "体温", "不吃", "精神", "健康", "兽医"
         ]
         if any(k in text for k in vet_keywords):
             return "vet_agent"
-        
+
         # 数据查询关键词
         data_keywords = [
-            "查", "档案", "列表", "有哪些", "多少", "生长", "曲线", 
-            "预测", "轨迹", "体重", "月龄", "id", "编号"
+            "查", "档案", "列表", "有哪些", "多少", "轨迹",
+            "月龄", "id", "编号"
         ]
         if any(k in text for k in data_keywords):
             return "data_agent"
-        
+
         # 视觉识别关键词
         perception_keywords = [
-            "图片", "照片", "视频", "监控", "摄像", "现场", "情况", 
+            "图片", "照片", "视频", "监控", "摄像", "现场", "情况",
             "状态", "截图", "识别", "检测", "看看", "看下"
         ]
         if any(k in text for k in perception_keywords):
             return "perception_agent"
-        
+
         # 默认直接回复
         return "direct_reply"
 
@@ -433,7 +454,7 @@ class WorkerAgent(ABC):
             input_text = self._build_input(context)
             
             # 执行
-            result = agent_executor.invoke({"input": input_text})
+            result = await agent_executor.ainvoke({"input": input_text})
             
             # 提取结果
             raw_output = result.get("output", "")
@@ -592,7 +613,7 @@ Thought: {{agent_scratchpad}}"""
             if not any(marker in line for marker in react_markers)
         ]
         if filtered:
-            return "\n".join(filtered[-5:])  # 取最后5行有意义内容
+            return "\n".join(filtered)  # 保留全部有意义内容，不再限制为最后5行
         
         return agent_output.strip()
 
@@ -672,31 +693,13 @@ class VetAgent(WorkerAgent):
                 tools.append(LCTool(
                     name=tool.name,
                     description=tool.description,
-                    func=lambda arg, t=tool: self._run_async_tool(t.handler(arg))
+                    func=lambda x: "Sync execution not supported",
+                    coroutine=tool.handler
                 ))
         
         return tools
     
-    def _run_async_tool(self, coro):
-        """同步执行异步工具"""
-        import asyncio
-        import threading
-        
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        
-        box = {}
-        
-        def _worker():
-            box["value"] = asyncio.run(coro)
-        
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
-        thread.join()
-        return box.get("value", "")
-    
+
     async def execute(self, context: AgentContext) -> AgentResult:
         """
         执行兽医诊断。
@@ -771,7 +774,7 @@ class VetAgent(WorkerAgent):
             
             input_text = self._build_input(context)
             try:
-                result = agent_executor.invoke({"input": input_text})
+                result = await agent_executor.ainvoke({"input": input_text})
             except Exception as e:
                 import logging
                 logging.getLogger("multi_agent_core").error(f"ReAct Exception: {e}")
@@ -1037,30 +1040,13 @@ class DataAgent(WorkerAgent):
                 tools.append(LCTool(
                     name=tool.name,
                     description=tool.description,
-                    func=lambda arg, t=tool: self._run_async_tool(t.handler(arg))
+                    func=lambda x: "Sync execution not supported",
+                    coroutine=tool.handler
                 ))
         
         return tools
     
-    def _run_async_tool(self, coro):
-        """同步执行异步工具"""
-        import asyncio
-        import threading
-        
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        
-        box = {}
-        
-        def _worker():
-            box["value"] = asyncio.run(coro)
-        
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
-        thread.join()
-        return box.get("value", "")
+
 
     async def execute(self, context: AgentContext) -> AgentResult:
         """Use LangChain when available, otherwise fall back to direct tool orchestration."""
@@ -1520,35 +1506,331 @@ class PerceptionAgent(WorkerAgent):
                 tools.append(LCTool(
                     name=tool.name,
                     description=tool.description,
-                    func=lambda arg, t=tool: self._run_async_tool(t.handler(arg))
+                    func=lambda x: "Sync execution not supported",
+                    coroutine=tool.handler
                 ))
         
         return tools
     
-    def _run_async_tool(self, coro):
-        """同步执行异步工具"""
-        import asyncio
-        import threading
-        
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
-        
-        box = {}
-        
-        def _worker():
-            box["value"] = asyncio.run(coro)
-        
-        thread = threading.Thread(target=_worker, daemon=True)
-        thread.start()
-        thread.join()
-        return box.get("value", "")
 
 
 # ============================================================
 # 多智能体协调器
 # ============================================================
+
+# ============================================================
+# GrowthCurveAgent - 生长曲线专属 Worker
+# ============================================================
+
+class GrowthCurveAgent(WorkerAgent):
+    """生长曲线分析专家（专为生长曲线页面设计，输出含两张标准表格的 Markdown 报告）"""
+
+    def __init__(self):
+        system_prompt = """你是生长曲线分析专家，专门为两头乌猪只生成标准生长曲线报告。
+
+执行流程（必须严格按顺序，禁止跳过）：
+1. 调用 get_pig_info_by_id 查询猪只档案，获取 lifecycle 数据（含喂食/饮水记录）。
+2. 调用 query_pig_growth_prediction 获取该猪只的预测生长轨迹。
+3. 综合两步结果，输出严格格式的报告。
+
+输出格式（必须完整，缺少任何一个标题将被判为格式错误）：
+
+## 基本信息
+- **猪只ID**：（填被查询的猪只ID）
+- **品种**：（从工具结果填写）
+- **当前月龄**：（填数字）月
+- **当前体重**：（填数字）kg
+
+## 生长趋势分析
+（2到4条简短的预测结论和建议）
+
+### 历史实测数据 (Historical)
+| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |
+| --- | --- | --- | --- | --- | --- |
+（从 get_pig_info_by_id 返回的 lifecycle 字段逐月填写）
+
+### 预测生长曲线数据 (Monthly)
+| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |
+| --- | --- | --- |
+（从 query_pig_growth_prediction 获取，历史月份标"已记录"，未来月份标"预测"，当前月标"当前"）
+
+## AI 建议
+（3条针对该猪只当前状态的具体建议，结合喂食/饮水数据给出）
+
+严格约束：
+- 必须同时输出以上两个表格，缺一不可。
+- 不要返回 JSON 格式内容。所有数字列只写纯数字，不含单位。
+- 回复全程使用中文，以完整报告为优先。"""
+
+        super().__init__(name="growth_curve_agent", system_prompt=system_prompt, tools=[])
+
+    def get_tools(self) -> List[LCTool]:
+        from v1.logic.bot_tools import list_tools
+        all_tools = list_tools()
+        tool_names = ["get_pig_info_by_id", "query_pig_growth_prediction"]
+        tools = []
+        for name in tool_names:
+            if name in all_tools:
+                t = all_tools[name]
+                tools.append(LCTool(
+                    name=t.name,
+                    description=t.description,
+                    func=lambda x: "Sync execution not supported",
+                    coroutine=t.handler
+                ))
+        return tools
+
+
+
+    async def execute(self, context: AgentContext) -> AgentResult:
+        if HAS_LANGCHAIN:
+            return await self._execute_react(context)
+        return await self._direct_tool_call(context)
+
+    async def _execute_react(self, context: AgentContext) -> AgentResult:
+        if not self.api_key:
+            return AgentResult(success=False, answer="系统繁忙，请稍后再试。", worker_name=self.name, error="no api key")
+        try:
+            try:
+                llm = ChatOpenAI(api_key=self.api_key, base_url=self.base_url, model=self.model, temperature=0.1, max_tokens=3000)
+            except TypeError:
+                llm = ChatOpenAI(openai_api_key=self.api_key, openai_api_base=self.base_url, model=self.model, temperature=0.1, max_tokens=3000)
+            tools = self.get_tools()
+            agent = create_react_agent(llm=llm, tools=tools, prompt=self._build_react_prompt())
+            from v1.logic.central_agent_core import RichTraceHandler
+            callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
+            executor = AgentExecutor(agent=agent, tools=tools, verbose=False,
+                handle_parsing_errors=True, max_iterations=6, return_intermediate_steps=True, callbacks=callbacks)
+            result = await executor.ainvoke({"input": self._build_input(context)})
+            raw = result.get("output", "")
+            answer = self._extract_final_answer(raw)
+            steps = result.get("intermediate_steps", [])
+            tool_outputs = [str(s[1]) for s in steps if len(s) >= 2]
+            thoughts = [f"Action: {getattr(s[0], 'tool', '?')}" for s in steps if len(s) >= 2]
+            return AgentResult(success=True, answer=answer or "报告生成完成。",
+                worker_name=self.name, thoughts=thoughts, tool_outputs=tool_outputs)
+        except Exception as e:
+            logger.error("growth_curve_agent react failed: %s", e, exc_info=True)
+            return await self._direct_tool_call(context)
+
+    async def _direct_tool_call(self, context: AgentContext) -> AgentResult:
+        """LangChain 不可用时的降级路径"""
+        from v1.logic.bot_tools import tool_get_pig_info_by_id, tool_query_pig_growth_prediction
+        meta_pig_id = str((context.metadata or {}).get("pig_id", "")).strip()
+        match = re.search(r"\b(?:PIG|LTW)[-_]?\d+\b", context.user_input or "", re.IGNORECASE)
+        pig_id = meta_pig_id or (match.group(0) if match else "")
+        if not pig_id:
+            return AgentResult(success=False, answer="缺少猪只编号，无法生成生长曲线报告。", worker_name=self.name, error="missing pig_id")
+        try:
+            pig_raw = await tool_get_pig_info_by_id(json.dumps({"pig_id": pig_id}, ensure_ascii=False))
+            pig_info = json.loads(pig_raw) if pig_raw.strip().startswith("{") else {}
+            growth_raw = await tool_query_pig_growth_prediction(json.dumps({"pig_id": pig_id}, ensure_ascii=False))
+            growth_data = json.loads(growth_raw) if growth_raw.strip().startswith("{") else {}
+            breed = pig_info.get("breed", "两头乌")
+            current_month = pig_info.get("current_month") or pig_info.get("currentMonth") or 0
+            current_weight = pig_info.get("current_weight_kg") or pig_info.get("currentWeightKg") or 0.0
+            lifecycle = pig_info.get("lifecycle") or []
+            hist_rows = []
+            for d in lifecycle:
+                m = d.get("month") or d.get("monthIndex", 0)
+                w = d.get("weight_kg") or d.get("weightKg") or d.get("weight", 0)
+                fc = d.get("feed_count") or d.get("feedCount", 0)
+                fd = d.get("feed_duration_mins") or d.get("feedDurationMins", 0)
+                wc = d.get("water_count") or d.get("waterCount", 0)
+                wd = d.get("water_duration_mins") or d.get("waterDurationMins", 0)
+                hist_rows.append(f"| {m} | {w} | {fc} | {fd} | {wc} | {wd} |")
+            pred_rows = []
+            for pt in (growth_data.get("predictions") or growth_data.get("points") or []):
+                mo = pt.get("month", 0)
+                wt = float(pt.get("weight_kg") or pt.get("weight") or 0)
+                st = pt.get("status", "预测")
+                pred_rows.append(f"| {mo} | {wt:.2f} | {st} |")
+            lines = [
+                f"## 基本信息",
+                f"- **猪只ID**：{pig_id}",
+                f"- **品种**：{breed}",
+                f"- **当前月龄**：{current_month}月",
+                f"- **当前体重**：{current_weight}kg",
+                "",
+                "## 生长趋势分析",
+                "- 已根据历史数据及相似案例生成预测曲线，请参见下方表格。",
+                "",
+                "### 历史实测数据 (Historical)",
+                "| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |",
+                "| --- | --- | --- | --- | --- | --- |",
+                *hist_rows,
+                "",
+                "### 预测生长曲线数据 (Monthly)",
+                "| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |",
+                "| --- | --- | --- |",
+                *pred_rows,
+                "",
+                "## AI 建议",
+                "1. 对照预测曲线持续记录实测体重，偏差超过 5kg 时重新评估饲喂方案。",
+                "2. 关注喂食次数与饮水时长变化，若出现异常下降，建议检查猪只健康状态。",
+                "3. 按当前生长轨迹，适时调整饲料配比以满足快速增重阶段的营养需求。",
+            ]
+            return AgentResult(success=True, answer="\n".join(lines), worker_name=self.name)
+        except Exception as e:
+            logger.error("growth_curve_agent direct call failed pig_id=%s: %s", pig_id, e, exc_info=True)
+            return AgentResult(success=False, answer="生长曲线报告生成失败，请稍后再试。", worker_name=self.name, error=str(e))
+
+
+# ============================================================
+# BriefingAgent - 每日简报专属 Worker
+# ============================================================
+
+class BriefingAgent(WorkerAgent):
+    """每日简报专家（汇总全场健康、环境、饲养数据，生成 Markdown 日报）"""
+
+    def __init__(self):
+        system_prompt = """你是两头乌养殖场智能日报生成专家，每日汇总全场状态并生成结构化简报。
+
+执行流程（必须全部调用，禁止编造数据）：
+1. 调用 get_farm_stats 获取全场猪只统计概览。
+2. 调用 query_env_status 获取当前环境数据。
+3. 调用 query_pig_health_records 传入 abnormal_only=true 获取异常猪只列表。
+4. 综合以上数据，生成完整每日简报。
+
+输出格式（Markdown）：
+# （填入今日日期） 两头乌养殖场智能诊断简报
+## 📊 整体概况
+（在栏总数、健康率、平均体重等核心指标）
+## 🌡️ 环境监测
+（温湿度、氨气浓度、通风状态）
+## 🏥 健康状况
+（异常猪只列表，无异常时说明全场健康）
+## 🍽️ 饲养管理
+（采食量和饮水量状况及建议）
+## ⚠️ 今日预警
+（汇总异常事件）
+## 💡 AI 建议
+（3条基于当日数据的具体行动建议）
+---
+*本简报由两头乌智能养殖系统自动生成 | （填入当前时间）*
+
+严格约束：全程中文，简报完整详实，不受长度限制。"""
+
+        super().__init__(name="briefing_agent", system_prompt=system_prompt, tools=[])
+
+    def get_tools(self) -> List[LCTool]:
+        from v1.logic.bot_tools import list_tools
+        all_tools = list_tools()
+        tool_names = ["get_farm_stats", "query_env_status", "query_pig_health_records"]
+        tools = []
+        for name in tool_names:
+            if name in all_tools:
+                t = all_tools[name]
+                tools.append(LCTool(
+                    name=t.name,
+                    description=t.description,
+                    func=lambda x: "Sync execution not supported",
+                    coroutine=t.handler
+                ))
+        return tools
+
+
+
+    async def execute(self, context: AgentContext) -> AgentResult:
+        if HAS_LANGCHAIN:
+            return await self._execute_react(context)
+        return await self._direct_tool_call(context)
+
+    async def _execute_react(self, context: AgentContext) -> AgentResult:
+        if not self.api_key:
+            return AgentResult(success=False, answer="系统繁忙，请稍后再试。", worker_name=self.name, error="no api key")
+        try:
+            try:
+                llm = ChatOpenAI(api_key=self.api_key, base_url=self.base_url, model=self.model, temperature=0.2, max_tokens=4000)
+            except TypeError:
+                llm = ChatOpenAI(openai_api_key=self.api_key, openai_api_base=self.base_url, model=self.model, temperature=0.2, max_tokens=4000)
+            tools = self.get_tools()
+            agent = create_react_agent(llm=llm, tools=tools, prompt=self._build_react_prompt())
+            from v1.logic.central_agent_core import RichTraceHandler
+            callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
+            executor = AgentExecutor(agent=agent, tools=tools, verbose=False,
+                handle_parsing_errors=True, max_iterations=8, return_intermediate_steps=True, callbacks=callbacks)
+            result = await executor.ainvoke({"input": self._build_input(context)})
+            raw = result.get("output", "")
+            answer = self._extract_final_answer(raw)
+            steps = result.get("intermediate_steps", [])
+            tool_outputs = [str(s[1]) for s in steps if len(s) >= 2]
+            thoughts = [f"Action: {getattr(s[0], 'tool', '?')}" for s in steps if len(s) >= 2]
+            return AgentResult(success=True, answer=answer or "今日简报生成完成。",
+                worker_name=self.name, thoughts=thoughts, tool_outputs=tool_outputs)
+        except Exception as e:
+            logger.error("briefing_agent react failed: %s", e, exc_info=True)
+            return await self._direct_tool_call(context)
+
+    async def _direct_tool_call(self, context: AgentContext) -> AgentResult:
+        """LangChain 不可用时直接调3个工具拼接 Markdown 简报"""
+        from v1.logic.bot_tools import tool_get_farm_stats, tool_query_env_status, tool_query_pig_health_records
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        try:
+            farm_raw = await tool_get_farm_stats("")
+            env_raw = await tool_query_env_status("")
+            health_raw = await tool_query_pig_health_records(json.dumps({"abnormal_only": True}, ensure_ascii=False))
+            farm = json.loads(farm_raw) if farm_raw.strip().startswith("{") else {}
+            env = json.loads(env_raw) if env_raw.strip().startswith("{") else {}
+            health = json.loads(health_raw) if health_raw.strip().startswith("{") else {}
+            total = farm.get("total_count") or farm.get("totalCount") or "--"
+            health_rate = farm.get("health_rate") or farm.get("healthRate") or "--"
+            avg_weight = farm.get("avg_weight") or farm.get("avgWeight") or "--"
+            env_info = env.get("environment") or {}
+            temp = env_info.get("temperature_c", "--")
+            humidity = env_info.get("humidity_pct", "--")
+            ammonia = env_info.get("ammonia_ppm", "--")
+            vent = env_info.get("ventilation_status", "--")
+            env_alerts = env.get("alerts") or []
+            abnormal_pigs = health.get("abnormal_pigs") or []
+            abnormal_count = len(abnormal_pigs)
+            lines = [
+                f"# {today} 两头乌养殖场智能诊断简报", "",
+                "## 📊 整体概况",
+                f"今日全场在栏 **{total}** 头，健康率 **{health_rate}**，平均体重约 **{avg_weight}** kg。",
+                "",
+                "## 🌡️ 环境监测",
+                f"- **舍内温度**：{temp}°C",
+                f"- **相对湿度**：{humidity}%",
+                f"- **氨气浓度**：{ammonia} ppm",
+                f"- **通风状态**：{vent}",
+            ]
+            if env_alerts and not str(env_alerts[0]).startswith("✅"):
+                lines += ["", "> ⚠️ 环境预警：" + "；".join(str(a) for a in env_alerts)]
+            lines += ["", "## 🏥 健康状况"]
+            if abnormal_count == 0:
+                lines.append("今日全场无异常个体，所有猪只健康状态良好。")
+            else:
+                lines.append(f"当前共发现 **{abnormal_count}** 头异常个体：")
+                for p in abnormal_pigs:
+                    pid = p.get("pig_id") or p.get("pigId", "--")
+                    score = p.get("health_score") or p.get("healthScore", "--")
+                    syms = ", ".join(p.get("symptoms") or [])
+                    lines.append(f"- {pid}（健康评分 {score}）：{syms or '待评估'}")
+            try:
+                ammonia_high = float(str(ammonia).strip()) > 12
+            except Exception:
+                ammonia_high = False
+            lines += [
+                "", "## 🍽️ 饲养管理",
+                "数据来源于今日 IoT 采集，建议参照正常采食量标准核对，出现偏差时及时调整。",
+                "", "## ⚠️ 今日预警",
+                f"异常个体数：**{abnormal_count}** 头。" if abnormal_count > 0 else "**无异常事件** — 今日全场运行平稳。",
+                "", "## 💡 AI 建议",
+                "1. " + (f"对 {abnormal_count} 头异常个体加强观察，必要时联系兽医。" if abnormal_count > 0 else "继续常规健康巡检，保持现有管理节奏。"),
+                "2. " + ("加强猪舍通风，空气质量超标时应立即处理。" if ammonia_high else "当前空气质量正常，保持通风频率。"),
+                "3. 定期消毒猪舍，保持饮水设施清洁，做好防疫记录。",
+                "", "---",
+                f"*本简报由两头乌智能养殖系统自动生成 | {now_str}*",
+            ]
+            return AgentResult(success=True, answer="\n".join(lines), worker_name=self.name)
+        except Exception as e:
+            logger.error("briefing_agent direct call failed: %s", e, exc_info=True)
+            return AgentResult(success=False, answer="每日简报生成失败，请稍后再试。", worker_name=self.name, error=str(e))
+
+
 
 class MultiAgentOrchestrator:
     """多智能体协调器"""
@@ -1559,6 +1841,8 @@ class MultiAgentOrchestrator:
             "vet_agent": VetAgent(),
             "data_agent": DataAgent(),
             "perception_agent": PerceptionAgent(),
+            "growth_curve_agent": GrowthCurveAgent(),
+            "briefing_agent": BriefingAgent(),
         }
     
     async def execute(self, context: AgentContext) -> AgentResult:
