@@ -21,33 +21,27 @@ const h2sChartRef = ref<HTMLElement | null>(null);
 
 let charts: echarts.ECharts[] = [];
 
-// 滚动联动视差状态
+// 滚动交互状态
 const stickyContainerRef = ref<HTMLElement | null>(null);
 const trackX = ref(0);
 const activePanelIndex = ref(0);
 
 const onScroll = () => {
     if (!stickyContainerRef.value) return;
-    
-    // 获取相对视窗的位置
     const containerRect = stickyContainerRef.value.getBoundingClientRect();
-    
-    // sticky 的触顶偏移（对应 class 'top-20' => 5rem = 80px）
-    const stickyTopOffset = 80; 
+    const stickyTopOffset = 80; // top-20
     const scrollDistance = stickyTopOffset - containerRect.top;
     
     if (scrollDistance >= 0) {
-        // 计算在粘滞状态下的可滚动区域，减去 sticky 元素自身的高度（80vh）和顶部的偏移。
         const stickyHeight = window.innerHeight * 0.8;
         const maxScroll = containerRect.height - stickyHeight - stickyTopOffset;
-        
         let progress = scrollDistance / (maxScroll > 0 ? maxScroll : 1);
         progress = Math.max(0, Math.min(1, progress));
         
-        // 轨道宽度为300%，我们需要向左移动最多66.666%（也就是200vw的距离）
+        // 轨道横移控制
         trackX.value = -(progress * 66.66666);
         
-        // 更新高亮导航
+        // 导航高亮
         if (progress < 0.33) activePanelIndex.value = 0;
         else if (progress < 0.66) activePanelIndex.value = 1;
         else activePanelIndex.value = 2;
@@ -75,13 +69,17 @@ onUnmounted(() => {
     window.removeEventListener('resize', () => charts.forEach(c => c.resize()));
     charts.forEach(c => c.dispose());
 });
-
 function initGasTrendChart(el: HTMLElement, name: string, color: string, data: number[], _currentValue: number, unit: string) {
+    const hexToRgba = (hex: string, alpha: number) => {
+        let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
     const myChart = echarts.init(el);
     charts.push(myChart);
     const hours = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'];
     const option = {
-        title: { text: name + ' 日内流变趋势', textStyle: { color: color, fontSize: 28, fontWeight: 'bold' }, left: 'center', top: 20 },
+        title: { text: name + ' 趋势', textStyle: { color: color, fontSize: 28, fontWeight: 'bold' }, left: 'center', top: 20 },
         tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)' },
         grid: { left: 60, right: 60, bottom: 60, top: 100 },
         xAxis: { type: 'category', boundaryGap: false, data: hours, axisLine:{lineStyle:{color:'#cbd5e1'}}, axisLabel:{fontSize: 16, fontWeight:'bold', color: '#64748b'} },
@@ -91,22 +89,20 @@ function initGasTrendChart(el: HTMLElement, name: string, color: string, data: n
                 name: name, type: 'line', smooth: true, symbolSize: 14,
                 lineStyle: { width: 6, color: color },
                 itemStyle: { color: color, shadowBlur: 10, shadowColor: color }, 
-                areaStyle: { color: new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color: color.replace(')', ', 0.5)').replace('rgb', 'rgba')}, {offset:1,color:'rgba(255,255,255,0)'}]) },
                 data: data,
                 markPoint: {
                     data: [{ type: 'max', name: 'Max' }],
                     itemStyle: {color: color}
+                },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: hexToRgba(color, 0.4) },
+                        { offset: 1, color: hexToRgba(color, 0) }
+                    ])
                 }
             }
         ]
     };
-    /* Since we are passing hex strings, replacing 'rgb' for alpha isn't perfect, let's just use manual hex -> rgba via a helper if needed, but for now echarts handles some hex directly, or we can just use native echarts opacity or literal strings. I'll hardcode the area colors properly: */
-    const hexToRgba = (hex: string, alpha: number) => {
-        let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
-    
-    option.series[0].areaStyle.color = new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color: hexToRgba(color, 0.4)}, {offset:1,color: hexToRgba(color, 0.0)}]) as any;
     
     myChart.setOption(option);
 }
@@ -147,7 +143,7 @@ function initMatrixHeatmap(el: HTMLElement) {
 <template>
   <div class="flex flex-col pb-40 pt-10 w-[95%] mx-auto max-w-[2000px] relative scroll-smooth">
     
-    <!-- 1. 顶部巨幅数据指标 -->
+    <!-- 统计指标 -->
     <section v-reveal="{delay: 100, arg: 'fade'}" class="flex flex-col space-y-16 mt-12 mb-48 px-2 shrink-0">
         <div class="flex items-baseline space-x-44">
             <div>
@@ -209,18 +205,16 @@ function initMatrixHeatmap(el: HTMLElement) {
         </div>
     </section>
 
-    <!-- 2. 微环境气体传感分析 (顶级创意交互：粘性横向侧滑) -->
-    <!-- 高占位容器，提供足够的向下滚动距离供其转化为横向滑动。350vh 表示能滚两屏半完成切换 -->
+    <!-- 气体传感系统 -->
     <div ref="stickyContainerRef" class="relative w-full shrink-0 mb-32" style="height: 350vh;">
-        <!-- 核心视区：粘在屏幕视口中部的巨大展示窗 -->
         <div class="sticky top-20 w-full h-[80vh] bg-white rounded-[3.5rem] shadow-[0_30px_90px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col border border-slate-100">
-            <!-- 头部标题固定区 -->
+            <!-- Header -->
             <div class="px-16 pt-12 pb-6 flex items-center justify-between shrink-0 relative z-20 bg-gradient-to-b from-white to-white/90 backdrop-blur-sm">
                 <div>
                     <h2 class="text-4xl font-black text-[#0f172a] tracking-widest relative z-10 before:content-[''] before:absolute before:bottom-1 before:-left-4 before:w-[120%] before:h-6 before:bg-blue-100/60 before:-z-10">微环境传感纵览系统</h2>
-                    <p class="text-slate-400 font-bold tracking-widest mt-4 uppercase text-lg">Scroll Down to Exploring Multi-Dimensional Gases</p>
+                    <p class="text-slate-400 font-bold tracking-widest mt-4 uppercase text-lg">环境指标动态监测</p>
                 </div>
-                <!-- 联动导航圆点 -->
+                <!-- 分页指示器 -->
                 <div class="flex space-x-6 bg-slate-50 p-4 rounded-full border border-slate-100">
                     <div :class="['w-16 h-2 rounded-full transition-all duration-500', activePanelIndex === 0 ? 'bg-blue-500 scale-110 shadow-[0_0_10px_rgba(59,130,246,0.5)]' : 'bg-slate-200']"></div>
                     <div :class="['w-16 h-2 rounded-full transition-all duration-500', activePanelIndex === 1 ? 'bg-emerald-500 scale-110 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-slate-200']"></div>
@@ -228,7 +222,7 @@ function initMatrixHeatmap(el: HTMLElement) {
                 </div>
             </div>
 
-            <!-- 超宽横向滑动的轨道 -->
+            <!-- 传感器展示轨道 -->
             <div 
                 class="flex-1 w-[300%] flex flex-nowrap transition-transform ease-out will-change-transform duration-100"
                 :style="{ transform: `translate3d(${trackX}%, 0, 0)` }"
@@ -278,7 +272,7 @@ function initMatrixHeatmap(el: HTMLElement) {
         </div>
     </div>
 
-    <!-- 3. 风险管理矩阵保留 -->
+    <!-- 风险矩阵 -->
     <section v-reveal="{delay: 150, arg: 'blur-in'}" class="bg-white border border-slate-100 rounded-[2.5rem] p-12 shadow-[0_10px_40px_rgba(0,0,0,0.03)] relative overflow-hidden transition-all duration-500 hover:shadow-[0_20px_60px_rgba(0,0,0,0.06)] flex flex-col space-y-10 w-full shrink-0">
         <div class="flex items-center justify-between">
             <h2 class="text-3xl font-black text-[#0f172a] tracking-widest px-4 relative z-10 before:content-[''] before:absolute before:bottom-1 before:left-0 before:w-full before:h-5 before:bg-blue-100/80 before:-z-10">全局风险控制 - 热力源分布</h2>

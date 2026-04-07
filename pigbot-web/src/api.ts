@@ -10,9 +10,8 @@ const api = axios.create({
 });
 
 export const apiService = {
-  /**
-   * 发送聊天消息
-   */
+  // 发送消息到 AI 会诊接口
+
   chat: async (messages: any[], imageUrls: string[] = []) => {
     const response = await api.post('/chat/v2', {
       user_id: 'web_demo_user',
@@ -23,9 +22,8 @@ export const apiService = {
     return response.data;
   },
 
-  /**
-   * 上传录音文件并转文字
-   */
+  // 语音识别接口
+
   transcribeVoice: async (audioBlob: Blob) => {
     const formData = new FormData();
     formData.append('file', audioBlob, 'record.webm');

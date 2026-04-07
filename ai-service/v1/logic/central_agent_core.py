@@ -50,7 +50,7 @@ _ZH_TOOL_CALL = "工具调用"
 _ZH_INPUT = "输入"
 _ZH_OUTPUT = "输出"
 
-# ReAct 提示词模板（中文版）
+# ReAct 提示词模板
 REACT_PROMPT_TEMPLATE = """你是一个智能助手，可以使用工具来回答问题。
 
 你可以使用以下工具：
@@ -82,7 +82,7 @@ Thought: {agent_scratchpad}"""
 
 
 class RichTraceHandler(BaseCallbackHandler):
-    """使用 Rich 库高亮显示 Agent 内部状态（思考过程不污染最终输出）"""
+    """使用 Rich 库高亮显示 Agent 内部状态"""
 
     def __init__(self, client_id: str = "default"):
         super().__init__()

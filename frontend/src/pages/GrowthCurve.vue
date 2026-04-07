@@ -4,7 +4,7 @@ import * as echarts from 'echarts';
 import { Activity, AlertCircle, ChevronLeft, Droplets, RefreshCw, TrendingUp, Utensils, Zap } from 'lucide-vue-next';
 import { apiService, type InspectionStreamEvent } from '../api';
 
-// ===================== 数据类型定义 =====================
+// 数据类型定义
 
 interface PigInfo {
   pigId: string;
@@ -14,7 +14,7 @@ interface PigInfo {
   current_month: number;
 }
 
-/** 历史实测数据点（来自lifecycle）*/
+// 历史实测点 (来自 lifecycle)
 interface HistoricalPoint {
   month: number;
   weight: number;        // 实测体重
@@ -24,14 +24,14 @@ interface HistoricalPoint {
   waterDuration: number; // 饮水时长(min)
 }
 
-/** 预测曲线数据点 */
+// 预测点数据
 interface CurvePoint {
   month: number;
   weight: number;
   status: string;
 }
 
-// ===================== 响应式状态 =====================
+// 响应式状态
 
 const isLoadingPigs = ref(true);
 const pigsList = ref<PigInfo[]>([]);
@@ -43,7 +43,7 @@ const streamStatus = ref('');
 const reportContent = ref('');
 const reportError = ref('');
 
-// 图表引用
+// ECharts 实例及引用
 const growthChartRef = ref<HTMLElement | null>(null);
 const feedChartRef = ref<HTMLElement | null>(null);
 const waterChartRef = ref<HTMLElement | null>(null);
@@ -58,9 +58,9 @@ const activeTab = ref<'growth' | 'feed' | 'water' | 'gain'>('growth');
 
 const isCurrentPig = (pigId: string) => selectedPig.value?.pigId === pigId;
 
-// ===================== 数据解析逻辑 =====================
+// 数据解析逻辑
 
-/** 解析历史实测数据表格（6列） */
+// 解析 6 列历史表格
 const parseHistoricalPoints = (markdown: string): HistoricalPoint[] => {
   const points = new Map<number, HistoricalPoint>();
   const lines = (markdown || '').replace(/\r/g, '').split('\n');
@@ -106,7 +106,7 @@ const parseHistoricalPoints = (markdown: string): HistoricalPoint[] => {
   return Array.from(points.values()).sort((a, b) => a.month - b.month);
 };
 
-/** 解析预测曲线表格（3列） */
+// 解析 3 列预测表格
 const parseCurvePointsFromReport = (markdown: string): CurvePoint[] => {
   const points = new Map<number, CurvePoint>();
   const lines = (markdown || '').replace(/\r/g, '').split('\n');
@@ -140,7 +140,7 @@ const parseCurvePointsFromReport = (markdown: string): CurvePoint[] => {
   return Array.from(points.values()).sort((a, b) => a.month - b.month);
 };
 
-// ===================== 计算属性 =====================
+// 计算属性
 
 const historicalPoints = computed(() => parseHistoricalPoints(reportContent.value));
 const curvePoints = computed(() => parseCurvePointsFromReport(reportContent.value));
@@ -153,7 +153,7 @@ const curveError = computed(() => {
   return '';
 });
 
-/** 6个统计卡片数据 */
+// 统计卡片数据汇总
 const stats = computed(() => {
   const pig = selectedPig.value;
   const hist = historicalPoints.value;
@@ -194,7 +194,7 @@ const stats = computed(() => {
   };
 });
 
-// ===================== 数据加载 =====================
+// 接口调用 & 数据加载
 
 const loadPigs = async () => {
   isLoadingPigs.value = true;
@@ -276,7 +276,7 @@ const backToList = () => {
   gainChart?.clear();
 };
 
-// ===================== Markdown 渲染 =====================
+// Markdown & HTML 渲染逻辑
 
 const escapeHtml = (text: string) =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
@@ -351,7 +351,7 @@ const markdownToHtml = (markdown: string) => {
 
 const reportHtml = computed(() => markdownToHtml(reportContent.value));
 
-// ===================== 图表渲染 =====================
+// 图表配置与渲染
 
 const COLORS = {
   historical: '#6366f1',
@@ -362,7 +362,7 @@ const COLORS = {
   gainRef: '#e2e8f0',
 };
 
-/** Tab1: 生长曲线（历史实测实线 + 预测虚线，双色区分） */
+// Tab1: 生长曲线（实测 + 预测）
 const renderGrowthChart = () => {
   if (!growthChartRef.value) return;
   growthChart = echarts.getInstanceByDom(growthChartRef.value) || echarts.init(growthChartRef.value);
@@ -457,7 +457,7 @@ const renderGrowthChart = () => {
   }, true);
 };
 
-/** Tab2: 喂食趋势（双柱：次数+时长） */
+// Tab2: 喂食趋势（次数 + 时长）
 const renderFeedChart = () => {
   if (!feedChartRef.value) return;
   feedChart = echarts.getInstanceByDom(feedChartRef.value) || echarts.init(feedChartRef.value);
@@ -492,7 +492,7 @@ const renderFeedChart = () => {
   }, true);
 };
 
-/** Tab3: 饮水趋势（次数+时长折线双Y轴） */
+// Tab3: 饮水趋势（次数 + 时长）
 const renderWaterChart = () => {
   if (!waterChartRef.value) return;
   waterChart = echarts.getInstanceByDom(waterChartRef.value) || echarts.init(waterChartRef.value);
@@ -528,7 +528,7 @@ const renderWaterChart = () => {
   }, true);
 };
 
-/** Tab4: 日增重分析（月增重柱状图 + 参考线） */
+// Tab4: 日增重分析（及参考线）
 const renderGainChart = () => {
   if (!gainChartRef.value) return;
   gainChart = echarts.getInstanceByDom(gainChartRef.value) || echarts.init(gainChartRef.value);
@@ -628,7 +628,7 @@ onUnmounted(() => {
 
 <template>
   <div class="h-full flex flex-col space-y-5 animate-fade-in">
-    <!-- 顶部标题栏 -->
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="flex items-center space-x-4">
         <button
@@ -666,12 +666,12 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <!-- 主内容区 -->
+    <!-- Main Content -->
     <div
       class="flex-1 overflow-hidden relative"
       :class="!selectedPig ? 'bg-transparent' : 'bg-slate-50/50 rounded-2xl border border-slate-200/60 p-4 md:p-6 lg:p-8'"
     >
-      <!-- 猪只列表 -->
+      <!-- 猪只选择列表 -->
       <div v-if="!selectedPig" class="h-full overflow-y-auto pb-6">
         <div v-if="isLoadingPigs" class="flex flex-col items-center justify-center py-32">
           <div class="relative w-16 h-16">
@@ -720,7 +720,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- 详情视图 -->
+      <!-- 报告详情视图 -->
       <div v-else class="h-full flex flex-col gap-5 overflow-y-auto custom-scrollbar">
 
         <!-- 统计卡片区（6个） -->

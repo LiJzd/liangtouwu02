@@ -2,14 +2,14 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
-// --- CN Utility ---
+// Tailwind 类合并组件
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// --- HTTP Utility ---
+// Axios 实例封装
 
-// 定义接口响应结构
+// 响应结构定义
 interface ApiResponse<T = any> {
   code?: number;
   data: T;
@@ -23,7 +23,7 @@ interface HttpErrorInfo {
   isNetworkError: boolean;
 }
 
-// 创建 axios 实例
+// 实例化 Axios
 const http: AxiosInstance = axios.create({
   baseURL: import.meta.env.DEV ? 'http://localhost:8080/api' : '/api', // 开发环境直接连接后端
   timeout: 120000, // 增加到 120 秒（2 分钟），因为 AI 生成简报需要时间

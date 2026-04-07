@@ -1,9 +1,6 @@
 """
-Inspection report controller.
-
-The growth-curve page still calls `/api/v1/inspection/*`, but report generation
-now routes through the shared agent pipeline so central/multi-agent logs and
-debug traces are emitted consistently.
+生猪检测报告控制器。
+Growth-curve 页面通过此接口调用中央 Agent 管道生成报告。
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from pydantic import BaseModel, Field
 from v1.logic.multi_agent_controller import get_orchestrator
 from v1.logic.multi_agent_core import AgentContext
 
-# Keep pig_rag importable for the legacy daily briefing entrypoint below.
+# 导入逻辑处理
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../pig_rag"))
 
 router = APIRouter()
@@ -55,7 +52,7 @@ def _format_sse(event: str, data: dict) -> str:
 
 
 def _build_growth_curve_prompt(pig_id: str) -> str:
-    """Ask the data agent for a UI-compatible markdown report with historical + prediction data."""
+    """构建用于请求 Data Agent 的 Prompt，要求输出历史 + 预测数据的 Markdown 格式"""
     return f"""
 请为猪只 {pig_id} 生成一份"生长曲线预测报告"。
 
@@ -115,7 +112,7 @@ async def _run_inspection_via_agent(pig_id: str) -> str:
         image_urls=None,
     )
 
-    logger.info("growth_curve request routed to multi-agent pig_id=%s client_id=%s", pig_id, client_id)
+    logger.info("Generating report for pig_id=%s", pig_id)
     result = await get_orchestrator().execute(context)
     logger.info(
         "growth_curve multi-agent finished pig_id=%s success=%s worker=%s error=%s",
@@ -145,7 +142,7 @@ async def generate_inspection_report(request: InspectionRequest):
 
         return InspectionResponse(
             code=200,
-            message="报告生成成功",
+            message="成功",
             pig_id=request.pig_id,
             report=report,
             timestamp=datetime.now(),
@@ -163,8 +160,7 @@ async def generate_inspection_report(request: InspectionRequest):
 async def generate_inspection_report_stream(request: InspectionRequest):
     async def event_generator():
         try:
-            yield _format_sse("status", {"message": "正在唤起中央 agent..."})
-            yield _format_sse("status", {"message": "正在路由到数据专家并拉取生长预测..."})
+            yield _format_sse("status", {"message": "正在分析数据..."})
 
             report = await _run_inspection_via_agent(request.pig_id)
 
@@ -180,7 +176,7 @@ async def generate_inspection_report_stream(request: InspectionRequest):
                 )
                 return
 
-            yield _format_sse("status", {"message": "正在整理生长曲线报告..."})
+            yield _format_sse("status", {"message": "正在生成生长曲线报告..."})
 
             chunk_size = 120
             for i in range(0, len(report), chunk_size):
@@ -254,7 +250,7 @@ async def generate_farm_briefing():
 async def health_check():
     return {
         "status": "UP",
-        "service": "Liangtouwu-Report-Engine-v1",
-        "arch": "Agent-driven growth-curve reporting",
+        "service": "Liangtouwu-Report-Engine",
+        "arch": "Agent-driven reporting",
         "timestamp": datetime.now(),
     }

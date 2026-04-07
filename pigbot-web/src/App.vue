@@ -126,7 +126,7 @@ const handleSend = async (manualImage?: string, manualText?: string) => {
   }
 };
 
-// --- 图片处理核心逻辑 ---
+// 图片处理逻辑
 const processFile = (file: File) => {
   if (!file.type.startsWith('image/')) {
     alert('只支持上传图片格式哦！');
@@ -163,7 +163,7 @@ const removeSelectedImage = () => {
   selectedImage.value = null;
 };
 
-// --- 语音录制 ---
+// 麦克风音频录制
 const startRecording = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

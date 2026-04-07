@@ -1,28 +1,19 @@
 <script setup lang="ts">
-/**
- * 实时监控 (Monitor) 视图组件 - 集成真实YOLO检测
- * =====================================
- * 使用AI服务的MJPEG流，已包含YOLO检测框
- * 
- * 核心功能：
- * 1. 直接显示AI服务处理后的视频流（已绘制检测框）
- * 2. 无需前端Canvas绘制
- * 3. 实时YOLO检测
- */
-import { ref, onMounted, onUnmounted } from 'vue';
-import { Camera, Video, Maximize, Scissors, CircleDot, Play, Pause, RefreshCw } from 'lucide-vue-next';
+// 实时监控：集成 YOLO 检测流
+import { ref, onMounted } from 'vue';
+import { Camera, Video, Maximize, Scissors, CircleDot, RefreshCw } from 'lucide-vue-next';
 import { cn } from '../utils';
 
-// --- 摄像头数据结构 ---
+// 摄像头数据结构
 interface CameraData {
   id: number;
   name: string;
   status: 'online' | 'offline';
   location: string;
-  videoFile: string; // 视频文件名
+  videoFile: string;
 }
 
-// --- 状态管理 ---
+// 状态管理
 const AI_SERVICE_URL = 'http://localhost:8000';
 
 const cameras = ref<CameraData[]>([
@@ -57,13 +48,11 @@ const cameras = ref<CameraData[]>([
 ]);
 
 const selectedCamera = ref<CameraData | null>(null);
-const loading = ref(false);
 const currentTime = ref(new Date().toLocaleTimeString());
 const streamUrl = ref('');
 const streamError = ref(false);
-const streamKey = ref(0); // 用于强制刷新img标签
+const streamKey = ref(0); // 强制刷新标签
 
-// 切换摄像头
 const selectCamera = (cam: CameraData) => {
   selectedCamera.value = cam;
   streamError.value = false;
@@ -77,7 +66,6 @@ const selectCamera = (cam: CameraData) => {
   }
 };
 
-// 刷新视频流
 const refreshStream = () => {
   if (selectedCamera.value) {
     streamKey.value++;
@@ -85,7 +73,6 @@ const refreshStream = () => {
   }
 };
 
-// 处理流加载错误
 const handleStreamError = () => {
   streamError.value = true;
   console.error('视频流加载失败:', streamUrl.value);
@@ -98,7 +85,7 @@ onMounted(() => {
     selectCamera(firstOnline);
   }
   
-  // HUD 时钟每秒更新
+  // 更新时钟
   setInterval(() => {
     currentTime.value = new Date().toLocaleTimeString();
   }, 1000);
@@ -108,7 +95,7 @@ onMounted(() => {
 <template>
   <div class="flex flex-col lg:flex-row h-[calc(100vh-8rem)] gap-6">
     
-    <!-- 左侧：信号源列表 -->
+    <!-- 信号源列表 -->
     <div class="w-full lg:w-80 bg-white rounded-none border border-slate-300 flex flex-col overflow-hidden">
       <div class="p-4 border-b border-slate-300 bg-slate-50">
         <h2 class="font-bold text-slate-800 flex items-center uppercase tracking-widest text-sm">
@@ -141,25 +128,25 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 右侧：视频播放器 -->
+    <!-- 视频播放器 -->
     <div class="flex-1 bg-black rounded-none border border-slate-800 overflow-hidden relative group shadow-none flex flex-col justify-center">
       <template v-if="selectedCamera">
-        <!-- HUD: 录制状态 -->
+        <!-- 录制状态 -->
         <div class="absolute top-4 left-4 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded-none animate-pulse flex items-center z-20 uppercase tracking-widest border border-red-500">
           <CircleDot class="w-3 h-3 mr-2" /> LIVE 实时侦测
         </div>
         
-        <!-- HUD: 算法信息 -->
+        <!-- 算法信息 -->
         <div class="absolute top-4 right-4 text-blue-500 text-xs font-mono bg-black/60 px-2 py-1 rounded-none z-20 border border-blue-900/50">
           感知引擎: YOLOv10-M | {{ currentTime }}
         </div>
         
-        <!-- HUD: AI服务状态 -->
+        <!-- AI服务状态 -->
         <div class="absolute top-16 right-4 bg-blue-600/20 text-blue-400 text-[10px] font-bold px-2 py-1 border border-blue-500/30 z-20 uppercase tracking-widest backdrop-blur-sm">
           AI服务: {{ streamError ? '连接失败' : '正常' }}
         </div>
 
-        <!-- HUD: 刷新按钮 -->
+        <!-- 刷新按钮 -->
         <button 
           @click="refreshStream"
           class="absolute top-28 right-4 bg-slate-800/80 hover:bg-slate-700 text-white text-[10px] font-bold px-2 py-1 border border-slate-600 z-20 uppercase tracking-widest backdrop-blur-sm flex items-center gap-1 transition-colors"
@@ -168,13 +155,13 @@ onMounted(() => {
         </button>
 
         <div class="w-full h-full flex items-center justify-center bg-slate-950 relative overflow-hidden">
-           <!-- 背景装饰：精密网格 -->
+           <!-- 网格背景 -->
            <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none z-0"></div>
           
-           <!-- 画面特效：CRT 扫描线 -->
+           <!-- CRT 扫描线特效 -->
            <div class="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,255,0,0.03))] bg-[size:100%_4px,3px_100%] pointer-events-none z-30"></div>
 
-          <!-- 核心：MJPEG视频流（已包含YOLO检测框） -->
+          <!-- MJPEG 视频流 -->
           <div v-if="streamUrl && !streamError" class="relative w-full h-full flex items-center justify-center z-10">
               <img 
                 :key="streamKey"
@@ -206,7 +193,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <!-- 播放器悬浮控制条 -->
+        <!-- 控制条 -->
         <div class="absolute bottom-0 left-0 right-0 bg-slate-900/90 border-t border-slate-800 p-4 translate-y-full group-hover:translate-y-0 transition-transform duration-200 z-20">
           <div class="flex items-center justify-center space-x-4">
             <button 

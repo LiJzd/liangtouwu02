@@ -1,17 +1,11 @@
 /**
- * 全局 API 业务接口封装模块
- * =====================================
- * 本模块是前端与后端沟通的唯一渠道，负责所有数据请求的标准化处理。
- * 
- * 核心特性：
- * 1. 自动切换：支持基于环境变量的环境自动切换（Mock 数据 vs 真实 API）。
- * 2. 类型安全：利用 TypeScript 接口定义了完整的业务实体模型（生猪、摄像头、预警等）。
- * 3. 混合推理支持：同时支持传统的 RESTful 请求和先进的 SSE (Server-Sent Events) 流式报告获取。
+ * 全局 API 业务接口
+ * 统一处理 RESTful 请求和 SSE 流式响应
  */
 
 import http from './utils';
 
-// --- 业务实体接口模型定义 ---
+// 业务实体接口模型
 
 export interface Camera {
     id: number;
@@ -26,30 +20,26 @@ export interface Alert {
     pigId: string;
     area: string;
     type: string;
-    risk: 'Critical' | 'High' | 'Medium' | 'Low'; // 风险等级枚举
+    risk: 'Critical' | 'High' | 'Medium' | 'Low'; // 风险等级
     timestamp: string;
-    message?: string; // 报警附带的消息或大模型诊断分析
+    message?: string; // 报警附带消息
 }
 
-/** 统一后端 API 响应包装 */
+// 统一后端响应包装
 interface ApiResponse<T> {
     code: number;
     data: T;
     message: string;
 }
 
-/** 
- * 生猪检测报告流事件类型定义 
- * 对应后端 SSE 推送的不同生命周期阶段
- */
+// 生猪检测报告流事件类型（对接后端 SSE）
 export type InspectionStreamEvent =
-    | { event: 'status'; data: { message?: string } } // 状态更新（如：正在运行数值轨...）
-    | { event: 'chunk'; data: { text?: string } }    // 正文数据碎片（Markdown 正文）
+    | { event: 'status'; data: { message?: string } } // 状态更新
+    | { event: 'chunk'; data: { text?: string } }    // 正文片段
     | { event: 'done'; data: { code?: number; message?: string; pig_id?: string; timestamp?: string } }
     | { event: 'error'; data: { code?: number; message?: string; detail?: string; pig_id?: string } };
 
-// --- 模拟数据 (Mock Data) 系统 ---
-// 当后端未启动时，保证前端界面仍能展示完整效果
+// Mock 数据：后端未启动时使用
 
 export const MOCK_DASHBOARD = {
     stockCount: 1580,
@@ -100,10 +90,11 @@ export const MOCK_PIGS_LIST = [
     { pigId: 'PIG004', breed: '两头乌', area: '三号舍', current_weight_kg: 40.5, current_month: 3 },
 ];
 
-// --- API 服务实现 ---
+// API 服务实现
 
-// 控制开关：读取 .env 环境变量中的 VITE_USE_REAL_API 决定是否请求真实后端
+// 环境变量切换：Mock vs 真实后端
 const USE_REAL_API = import.meta.env.VITE_USE_REAL_API === 'true';
+// 模拟延迟
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 生成模拟简报内容
@@ -335,7 +326,7 @@ ${predictionTable}
 
 
 export const apiService = {
-    /** 身份验证：登录接口 */
+    // 登录接口
     login: async (username: string, password: string): Promise<ApiResponse<any>> => {
         if (USE_REAL_API) {
             const res = await http.post('/auth/login', { username, password });
@@ -352,7 +343,7 @@ export const apiService = {
         return { code: 401, data: null, message: '用户名或密码无效' };
     },
 
-    /** 指标数据：获取仪表盘统计 */
+    // 获取仪表盘统计数据
     getDashboardStats: async () => {
         if (USE_REAL_API) {
             const res = await http.get('/dashboard/stats');
@@ -429,7 +420,7 @@ export const apiService = {
         return mockResponse(filtered);
     },
 
-    /** 辅助：获取所有在册生猪列表 (用于选择生成报告) */
+    // 获取所有生猪列表
     getPigsList: async () => {
         if (USE_REAL_API) {
             const res = await http.get('/pigs/list');
@@ -510,10 +501,7 @@ export const apiService = {
         };
     },
 
-    /** 
-     * AI 研判：同步生成报告接口 
-     * 适用于报告长度固定且对即时性要求不高的场景。
-     */
+    // 同步生成 AI 报告（耗时较长）
     generatePigInspectionReport: async (pigId: string) => {
         if (!USE_REAL_API) {
             await delay(1500);
@@ -528,12 +516,7 @@ export const apiService = {
         return res.data;
     },
 
-    /** 
-     * 核心业务：流式生成报告 (SSE 中转)
-     * 利用浏览器 fetch API 原生读取响应体流，实现类似 ChatGPT 的逐字符打字机效果。
-     * 
-     * @param onEvent 事件回调，用于将接收到的流碎片实时渲染到 UI 组件中。
-     */
+    // 流式生成报告（SSE 逐字打字机效果）
     streamPigInspectionReport: async (
         pigId: string,
         onEvent: (event: InspectionStreamEvent) => void
@@ -635,10 +618,7 @@ export const apiService = {
         return await res.json();
     },
 
-    /**
-     * 获取生长曲线数据
-     * 返回指定猪只的生长预测曲线数据点
-     */
+    // 获取生长曲线预测数据点
     getGrowthCurve: async (pigId: string) => {
         if (USE_REAL_API) {
             const res = await http.get(`/pigs/${pigId}/growth-curve`);
