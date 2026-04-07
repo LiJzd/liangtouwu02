@@ -100,10 +100,16 @@ class RichTraceHandler(BaseCallbackHandler):
             thought = thought[8:].strip()
         
         # 推送到 SSE 调试流
-        asyncio.create_task(self._push_event("action", {
-            "tool": tool_name,
-            "input": str(tool_input)
-        }))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._push_event("action", {
+                "tool": tool_name,
+                "input": str(tool_input),
+                "thought": thought
+            }))
+        except (RuntimeError, Exception):
+            pass
+
         
         if not HAS_RICH or not console:
             return
@@ -140,9 +146,14 @@ class RichTraceHandler(BaseCallbackHandler):
         logger.info(f"on_tool_end 被调用，输出长度: {len(str(output))}")
         
         # 推送到 SSE 调试流
-        asyncio.create_task(self._push_event("observation", {
-            "output": str(output)[:500]  # 限制长度
-        }))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._push_event("observation", {
+                "output": str(output)[:1000]
+            }))
+        except (RuntimeError, Exception):
+            pass
+
         # 不再向控制台打印带有完整数据的观测结果，避免控制台刷屏
 
     def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
@@ -150,9 +161,14 @@ class RichTraceHandler(BaseCallbackHandler):
         output = getattr(finish, "return_values", {}).get("output", "")
         
         # 推送到 SSE 调试流
-        asyncio.create_task(self._push_event("final_answer", {
-            "answer": str(output)
-        }))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._push_event("final_answer", {
+                "answer": str(output)
+            }))
+        except (RuntimeError, Exception):
+            pass
+
         
         if not HAS_RICH or not console:
             return

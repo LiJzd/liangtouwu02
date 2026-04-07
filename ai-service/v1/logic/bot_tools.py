@@ -140,43 +140,51 @@ def list_tools() -> Dict[str, Tool]:
 
 def _parse_args(text: str) -> Dict[str, Any]:
     """
-    智能参数解析器：支持多种输入格式
+    智能参数解析器：支持多种输入格式，并自动映射常用参数名。
     
     支持的格式：
     1. JSON格式：{"key": "value", "key2": 123}
     2. 键值对格式：key=value, key2=value2
     3. 纯文本格式：直接作为参数
-    
-    Args:
-        text: 输入参数字符串
-    
-    Returns:
-        解析后的参数字典
     """
     raw = (text or "").strip()
+    data: Dict[str, Any] = {}
+    
     if not raw:
         return {}
     
     # 尝试解析为JSON
     if raw.startswith("{") or raw.startswith("["):
         try:
-            data = json.loads(raw)
-            return data if isinstance(data, dict) else {"_args": data}
+            decoded = json.loads(raw)
+            if isinstance(decoded, dict):
+                data = decoded
+            else:
+                data = {"_args": decoded}
         except Exception:
-            return {"_raw": raw}
+            data = {"_raw": raw}
+    else:
+        # 解析键值对格式（如：key1=value1, key2=value2）
+        parts = re.split(r"[,\s]+", raw)
+        for part in parts:
+            if not part:
+                continue
+            if "=" in part:
+                key, value = part.split("=", 1)
+                data[key.strip()] = value.strip()
+            else:
+                data.setdefault("_args", []).append(part)
     
-    # 解析键值对格式（如：key1=value1, key2=value2）
-    parts = re.split(r"[,\s]+", raw)
-    data: Dict[str, Any] = {}
-    for part in parts:
-        if not part:
-            continue
-        if "=" in part:
-            key, value = part.split("=", 1)
-            data[key.strip()] = value.strip()
-        else:
-            # 无键的值存入 _args 列表
-            data.setdefault("_args", []).append(part)
+    # --- 参数纠偏 (Normalizing Parameter Names) ---
+    # 常见幻觉处理：把 id, pigId 统一映射为 pig_id
+    if "pig_id" not in data:
+        if "id" in data:
+            data["pig_id"] = data.pop("id")
+        elif "pigId" in data:
+            data["pig_id"] = data.pop("pigId")
+        elif "pig_ID" in data:
+            data["pig_id"] = data.pop("pig_ID")
+            
     return data
 
 
@@ -342,9 +350,20 @@ async def tool_get_pig_info_by_id(arg: str) -> str:
             pig_id = data["_args"][0]
         include_lifecycle = data.get("include_lifecycle", True)
     
+    # 彻底清理 pig_id 可能包含的 JSON 字符（LLM 偶尔会传 {"pig_id": "PIG001"} 作为字符串）
     if not pig_id:
         pig_id = (arg or "").strip()
     
+    if isinstance(pig_id, str):
+        pig_id = pig_id.strip("'\"")
+        if (pig_id.startswith("{") and "id" in pig_id) or pig_id.startswith("id="):
+            # 再次尝试解析
+            try:
+                sub_data = _parse_args(pig_id)
+                pig_id = sub_data.get("pig_id") or pig_id
+            except Exception:
+                pass
+
     if not pig_id:
         return "用法: 调用 get_pig_info_by_id pig_id=XXX"
     
