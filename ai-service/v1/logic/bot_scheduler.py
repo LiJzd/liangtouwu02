@@ -1,3 +1,8 @@
+"""
+这个文件管着后台的“定时提醒”功能。
+比如哪个老乡订阅了每日简报，咱们就得定时去数据库里翻翻，看该给谁发报送了。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,6 +18,14 @@ from v1.objects.bot_models import BotSubscription
 
 
 async def process_due_subscriptions() -> int:
+    """
+    看看现在有谁该收简报了。
+    
+    流程大概是：
+    1. 查日子：根据配置的时区，看看现在是几点。
+    2. 搜名单：去数据库里把所有订阅用户都拎出来。
+    3. 挨个发：谁到点儿了，就给谁出一份简报，塞进发信队列里。
+    """
     settings = get_settings()
     tz = ZoneInfo(settings.bot_timezone)
     now = datetime.now(tz)
@@ -38,6 +51,9 @@ async def process_due_subscriptions() -> int:
 
 
 async def scheduler_loop(stop_event: asyncio.Event) -> None:
+    """
+    这是个永不停歇的小钟表，每隔一段时间就去检查一下有没有该发的订阅。
+    """
     settings = get_settings()
     interval = max(10, int(settings.bot_scheduler_interval_seconds))
 

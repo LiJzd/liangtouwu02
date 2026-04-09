@@ -1,28 +1,8 @@
 """
-========================================
-数据库连接管理模块
-========================================
-等效于 SpringBoot 的 DataSource + JPA Configuration
+数据库连接管理中心
 
-架构定位：
-- 使用 SQLAlchemy 异步引擎管理数据库连接
-- 提供连接池管理，优化数据库访问性能
-- 支持自动创建表结构（类似 JPA 的 ddl-auto）
-
-技术栈：
-- SQLAlchemy: Python ORM框架
-- aiomysql: 异步MySQL驱动
-- AsyncSession: 异步会话管理
-
-使用方式：
-```python
-from v1.common.db import get_session
-
-async def example():
-    async with get_session() as session:
-        result = await session.execute(select(User))
-        users = result.scalars().all()
-```
+这儿是咱系统的“后勤大管家”，负责管好跟数据库打交道的那些事儿。
+不管是建立连接、管理连接池，还是自动建表，统统都在这里打理。
 """
 from __future__ import annotations
 
@@ -34,12 +14,9 @@ from v1.objects.bot_models import Base
 
 def _build_mysql_url() -> str:
     """
-    构建MySQL连接URL
+    拼装 MySQL 的连接“地址单”。
     
-    格式: mysql+aiomysql://user:password@host:port/database?charset=utf8mb4
-    
-    Returns:
-        str: 完整的数据库连接URL
+    把用户名、密码、地址、端口还有库名一股脑儿捏成一个字符串。
     """
     settings = get_settings()
     user = settings.mysql_user
@@ -80,14 +57,10 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def init_db() -> None:
     """
-    初始化数据库表结构
+    初始化数据库底座（建表逻辑）。
     
-    等效于 JPA 的 ddl-auto=update
-    
-    功能：
-    - 根据 ORM 模型自动创建表
-    - 如果表已存在则跳过
-    - 在应用启动时调用
+    在系统启动的时候，咱们会在这儿根据模型把表结构都建好。
+    如果表已经在那儿了，咱们就不折腾了，直接跳过。
     """
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -95,19 +68,10 @@ async def init_db() -> None:
 
 async def get_session() -> AsyncSession:
     """
-    获取数据库会话
+    借一个“记账本”（数据库会话）。
     
-    等效于 SpringBoot 的 @Autowired EntityManager
-    
-    使用方式：
-    ```python
-    async with get_session() as session:
-        # 执行数据库操作
-        result = await session.execute(select(User))
-    ```
-    
-    Yields:
-        AsyncSession: 异步数据库会话
+    谁要往数据库里查点什么、记点什么，就到这里来申领。
+    用完之后记得归还（会自动关闭会话）。
     """
     async with AsyncSessionLocal() as session:
         yield session

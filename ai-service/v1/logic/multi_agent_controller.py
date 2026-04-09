@@ -1,5 +1,6 @@
 """
-多智能体控制器 - 使用 Supervisor-Worker 架构
+多智能体控制器 - 也就是咱这套系统的“大内总管”。
+采用指挥官（Supervisor）+ 干活人（Worker）的架构来处理复杂任务。
 """
 from __future__ import annotations
 
@@ -23,7 +24,7 @@ _orchestrator: MultiAgentOrchestrator | None = None
 
 
 def get_orchestrator() -> MultiAgentOrchestrator:
-    """获取协调器单例"""
+    """把“总调度室”请出来（单例模式，保证全局只有这么一个）。"""
     global _orchestrator
     if _orchestrator is None:
         _orchestrator = MultiAgentOrchestrator()
@@ -33,12 +34,12 @@ def get_orchestrator() -> MultiAgentOrchestrator:
 @router.post("/chat/v2", response_model=AgentChatResponse)
 async def chat_v2(payload: AgentChatRequest) -> AgentChatResponse:
     """
-    多智能体对话接口（V2 版本）
+    这是咱的高级对话接口（V2 版）。
     
-    使用 Supervisor-Worker 架构：
-    1. Supervisor 路由意图
-    2. Worker 执行任务
-    3. 返回结果
+    它比以前聪明在哪：
+    1. 指挥官先拿主意：就是 Supervisor 会先看看用户到底想干啥。
+    2. 干活人去执行：就是具体的 Worker，谁最擅长干这活儿就派谁去。
+    3. 最后汇总回话：把大家伙儿的力气往一块使，给老乡一个最准的答案。
     """
     logger.info(
         "multi_agent_chat hit user_id=%s messages=%d",
@@ -90,7 +91,11 @@ async def chat_v2(payload: AgentChatRequest) -> AgentChatResponse:
 
 @router.post("/voice/transcribe")
 async def transcribe_voice(file: UploadFile = File(...)):
-    """接收基于网页录制的 Blob 音频上传，自动转文本"""
+    """
+    专门对付网页上录下来的语音。
+    
+    老乡从浏览器里说的话，到这儿统统变成文字，方便后续 AI 理解。
+    """
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
     if not api_key:

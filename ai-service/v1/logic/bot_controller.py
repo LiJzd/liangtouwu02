@@ -23,6 +23,10 @@ router = APIRouter()
 
 @router.post("/handle", response_model=BotHandleResponse)
 async def handle_message_api(payload: BotHandleRequest, session: AsyncSession = Depends(get_session)):
+    """
+    这个接口是给外部（比如机器人运行器）调用的主入口。
+    就像个专门负责传话的接线员，收到消息就转给 handle_message 那个大管家去处理。
+    """
     reply, image = await handle_message(
         session, payload.qq_user_id, payload.message,
         guild_id=payload.guild_id,
@@ -33,6 +37,10 @@ async def handle_message_api(payload: BotHandleRequest, session: AsyncSession = 
 
 @router.get("/outbox/pending", response_model=OutboxPendingResponse)
 async def get_pending_outbox(limit: int = 20) -> OutboxPendingResponse:
+    """
+    看看发信盒里还有哪些待发的信。
+    咱们默认一次拿20封，省得一次性拿太多了看不过来。
+    """
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(BotOutbox, BotUser.dms_guild_id)
@@ -56,6 +64,10 @@ async def get_pending_outbox(limit: int = 20) -> OutboxPendingResponse:
 
 @router.post("/outbox/mark")
 async def mark_outbox(payload: OutboxMarkRequest):
+    """
+    给发出去的信“打个戳”。
+    要是顺利发出去了就记个时间，要是搞砸了也得把错误记下来。
+    """
     async with AsyncSessionLocal() as session:
         values = {
             "status": payload.status,

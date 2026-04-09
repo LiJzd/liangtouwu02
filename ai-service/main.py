@@ -1,13 +1,12 @@
 """
-掌上明猪 AI 算法中枢 - FastAPI 应用入口
-(等效于 SpringBoot 的 @SpringBootApplication 主类)
+掌上明猪 AI 算法大本营 - FastAPI 入口
 
-功能说明：
-1. 服务初始化：初始化 FastAPI 实例，配置应用生命周期管理。
-2. 异常处理：注册全局异常处理器，统一错误返回格式（类似 @RestControllerAdvice）。
-3. 跨域配置：配置 CORS 中间件，允许前端跨域访问（类似 WebMvcConfigurer）。
-4. 路由分发：挂载不同业务模块的 API 路由（类似 @RequestMapping）。
-5. 环境监测：提供健康检查接口。
+这里就像是整个 AI 后台的心脏。
+我们主要干了这几件事：
+1. 把服务拉起来，定好什么时候开机、什么时候关机。
+2. 统一管好报错，别让前端拿到一些莫名其妙的错误代码。
+3. 把门口（CORS）守好，让自家前端能进来。
+4. 把不同业务的路由都接进来，像拼图一样凑成一个大服务。
 """
 
 from fastapi import FastAPI, Request, status
@@ -40,15 +39,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ==================== 应用生命周期管理 ====================
+# ==================== 服务生命周期 ====================
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    应用生命周期管理（等效于 SpringBoot 的 @PostConstruct 和 @PreDestroy）
+    这里管着服务的“生老病死”。
     
-    startup (yield 前): 应用启动时执行。适合加载大型 AI 模型、初始化数据库连接。
-    shutdown (yield 后): 应用关闭时执行。适合释放显存、关闭连接池。
+    开机的时候：加载配置、初始化数据库、把后台机器人也叫醒。
+    关机的时候：优雅地把后台任务掐掉，清理战场。
     """
     # ---------- [启动阶段] ----------
     logger.info("========== 掌上明猪 AI 算法中枢启动中 ==========")
@@ -86,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 # ==================== 创建应用实例 ====================
 
-# 初始化 FastAPI 核心实例
+# 把 FastAPI 搞起来
 app = FastAPI(
     title="掌上明猪 AI 算法中枢",
     description="后端核心 AI 服务：承载 YOLOv10 对象检测、DTW 轨迹匹配及 RAG 智能预测功能",
@@ -101,7 +100,7 @@ app = FastAPI(
 # ==================== 跨域资源共享 (CORS) 配置 ====================
 
 settings = get_settings()
-# 允许前端应用（Vue/React）通过浏览器进行跨域调用
+# 让前端 Vue 页面能顺利调咱们的接口
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins, # 允许的来源列表，由 .env 动态配置
@@ -111,14 +110,13 @@ app.add_middleware(
 )
 
 
-# ==================== 全局异常拦截处理 ====================
+# ==================== 全局拦截报错 ====================
 
 # 1. 处理自定义或预料中的参数验证失败 (ValueError)
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """
-    捕获业务逻辑中抛出的参数错误
-    类似于 Java 中的 @ExceptionHandler(IllegalArgumentException.class)
+    要是代码里某处报了数据校验错误，咱们在这儿统一拦截。
     """
     logger.error(f"业务参数校验失败: {str(exc)}")
     error_response = ErrorResponse(
@@ -136,7 +134,7 @@ async def value_error_handler(request: Request, exc: ValueError):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """
-    兜底异常处理器，防止服务崩溃并返回标准格式的 500 错误
+    万一出了什么没想到的错误，这儿就是最后的兜底。
     """
     logger.error(f"服务器内部异常 [未捕获]: {type(exc).__name__} - {str(exc)}", exc_info=True)
     error_response = ErrorResponse(
@@ -156,12 +154,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/health", tags=["系统监控"])
 async def health_check():
     """
-    服务健康检查接口
-    (等效于 SpringBoot Actuator 的 /actuator/health)
-    
-    用途：
-    - 维持负载均衡状态
-    - K8s 存活/就绪探针 (Liveness/Readiness Probe)
+    报个平安，告诉外界咱们的服务还没挂。
     """
     return {
         "status": "UP",
@@ -171,8 +164,7 @@ async def health_check():
     }
 
 
-# ==================== 业务模块路由挂载 ====================
-# 将各子模块的路由逻辑引入并挂载在不同的 URL 前缀下
+# ==================== 把各模块接进来 ====================
 
 # [生猪检测报告模块] - 处理生猪盘点、异常报表逻辑
 try:
@@ -267,7 +259,7 @@ except Exception as e:
 if __name__ == "__main__":
     import uvicorn
     
-    # 启动 ASGI 服务器 (等效于 java -jar)
+    # 终于要点火起航了 (相当于 java -jar)
     # 核心参数说明：
     # - host/port: 绑定地址和端口
     # - reload: 由于 Windows 下 watchfiles 稳定性问题，建议生产/测试环境设为 False

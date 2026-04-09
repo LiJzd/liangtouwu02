@@ -1,12 +1,10 @@
 """
-生猪检测报告控制器（重构版）。
+这里是生猪检测报告的“指挥部”。
 
-改造要点：
-- /generate 和 /generate/stream：不再在控制器层硬编码 prompt，
-  改为发出标准意图语句，由 SupervisorAgent 路由到 GrowthCurveAgent。
-- /briefing：废弃旧的 pig_agent.run_farm_daily_briefing，
-  改为通过意图路由到 BriefingAgent，结果封装为 Java 后端兼容格式。
-- /briefing/stream：新增流式简报端点，前端触发时逐字推送简报内容。
+现在的玩法变了：
+1. 生长曲线分析：不再自己埋头干，而是发个口信让 Supervisor 指派 GrowthCurveAgent 去干活。
+2. 每日简报：同样的套路，发个意图让 BriefingAgent 给咱出一份全场的日报。
+3. 顺滑体验：支持 SSE 流式推送，报告是一个字一个字蹦出来的，体验更好。
 """
 
 from __future__ import annotations
@@ -60,7 +58,7 @@ def _fmt_sse(event: str, data: dict) -> str:
 
 
 def _build_growth_curve_intent(pig_id: str) -> str:
-    """构造生长曲线任务的意图语句，让 Supervisor 路由到 GrowthCurveAgent。"""
+    """拼一句话，告诉调度员我们要查哪头猪的生长曲线。"""
     return (
         f"请为猪只 {pig_id} 生成生长曲线报告。"
         f"这是来自生长曲线页面的内部请求（growth_curve），"
@@ -69,7 +67,7 @@ def _build_growth_curve_intent(pig_id: str) -> str:
 
 
 def _build_briefing_intent() -> str:
-    """构造每日简报任务的意图语句，让 Supervisor 路由到 BriefingAgent。"""
+    """拼一句话，让调度员去生成今日的全场简报。"""
     today = datetime.now().strftime("%Y-%m-%d")
     return (
         f"请生成今日 {today} 的两头乌养殖场每日简报（briefing）。"
@@ -82,7 +80,7 @@ def _build_briefing_intent() -> str:
 
 
 async def _run_growth_curve_via_agent(pig_id: str) -> str:
-    """通过意图路由让 GrowthCurveAgent 生成生长曲线报告。"""
+    """把活儿甩给多智能体系统，让 GrowthCurveAgent 去折腾报告。"""
     context = AgentContext(
         user_id=f"growth_curve_{pig_id}",
         user_input=_build_growth_curve_intent(pig_id),
@@ -108,7 +106,7 @@ async def _run_growth_curve_via_agent(pig_id: str) -> str:
 
 
 async def _run_briefing_via_agent() -> str:
-    """通过意图路由让 BriefingAgent 生成每日简报。"""
+    """通过多智能体系统，找 BriefingAgent 要一份简报。"""
     client_id = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     context = AgentContext(
         user_id="briefing_system",
@@ -162,6 +160,7 @@ async def generate_inspection_report(request: InspectionRequest):
 @router.post("/generate/stream", tags=["生猪检测"])
 async def generate_inspection_report_stream(request: InspectionRequest):
     async def _gen():
+        """打字机效果的推送逻辑：先把专家请出来，再把它的答案一截截喂给前端。"""
         try:
             yield _fmt_sse("status", {"message": "正在路由到生长曲线分析专家..."})
             report = await _run_growth_curve_via_agent(request.pig_id)
@@ -207,10 +206,8 @@ async def generate_inspection_report_stream(request: InspectionRequest):
 @router.post("/briefing", tags=["每日简报"])
 async def generate_farm_briefing():
     """
-    手动触发每日简报生成。
-
-    通过 SupervisorAgent→BriefingAgent 意图路由，
-    返回格式与原接口兼容（供 Java 后端存入数据库）。
+    手动生成全场日报。
+    除了拿回完整的报告，咱们还会顺手帮前端从第一段里抠出个简短的摘要。
     """
     try:
         report = await _run_briefing_via_agent()
@@ -249,9 +246,7 @@ async def generate_farm_briefing():
 
 @router.post("/briefing/stream", tags=["每日简报"])
 async def generate_farm_briefing_stream():
-    """
-    流式生成每日简报（SSE），前端触发后以打字机效果推送内容。
-    """
+    """流式日报推送，让用户看着更有“正在分析”的感觉。"""
     async def _gen():
         try:
             yield _fmt_sse("status", {"message": "正在路由到每日简报生成专家..."})
@@ -293,6 +288,7 @@ async def generate_farm_briefing_stream():
 
 @router.get("/health", tags=["系统监控"])
 async def health_check():
+    """报个平安。"""
     return {
         "status": "UP",
         "service": "Liangtouwu-Report-Engine",

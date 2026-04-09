@@ -1,26 +1,8 @@
 """
-========================================
-配置管理模块
-========================================
-等效于 SpringBoot 的 @Configuration + application.yml
+这里管着整个系统的配置。
 
-架构定位：
-- 使用 pydantic-settings 实现类型安全的配置读取
-- 支持从 .env 文件和环境变量自动加载配置
-- 提供全局单例配置对象
-
-配置优先级（从高到低）：
-1. 环境变量（最高优先级）
-2. .env 文件
-3. 代码中的默认值（最低优先级）
-
-使用方式：
-```python
-from v1.common.config import get_settings
-
-settings = get_settings()
-print(settings.app_name)
-```
+咱们把所有的 API 秘钥、数据库地址、模型路径什么的都拢到这儿统一打理。
+它会自动去翻 .env 文件或者系统环境变量，咱们想用的时候直接调个 get_settings 拿出来就行，特别省事。
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,26 +11,15 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     """
-    ========================================
-    全局配置类
-    ========================================
-    等效于 SpringBoot 的 @ConfigurationProperties
+    这就是咱系统的配置大全了。
     
-    配置加载优先级：
-    1. 环境变量（最高优先级）
-    2. .env 文件
-    3. 默认值（最低优先级）
-    
-    配置分类：
-    - 应用基础配置：应用名称、版本、调试模式
-    - 服务端口配置：监听地址和端口
-    - CORS配置：跨域资源共享设置
-    - YOLO模型配置：模型路径和推理参数
-    - RAG配置：向量数据库和嵌入模型
-    - 数据库配置：SQLite/MySQL连接信息
-    - QQ Bot配置：机器人认证信息
-    - AI服务配置：DashScope API密钥和模型
-    - 日志配置：日志级别和文件路径
+    里面分门别类地装好了：
+    - 基础配置：App 叫啥名、版本号是啥。
+    - 门牌号：服务器跑在哪个 Host 和端口上。
+    - 跨域：专门留门给前端 Vue 页面调接口用的。
+    - AI 模型：YOLO 检测和 RAG 相关的路径、参数。
+    - 数据库：咱存数的地方。
+    - 机器人：QQ Bot 的那些密匙。
     """
     
     # ==================== 应用基础配置 ====================
@@ -107,28 +78,9 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """
-    ========================================
-    获取全局配置单例
-    ========================================
-    等效于 SpringBoot 的 @Autowired 注入配置 Bean
+    一键拿走所有配置。
     
-    实现原理：
-    - 使用 @lru_cache 装饰器确保配置对象只被实例化一次（单例模式）
-    - 在 FastAPI 中通过 Depends(get_settings) 注入使用
-    
-    使用示例：
-    ```python
-    # 方式1：直接调用
-    settings = get_settings()
-    
-    # 方式2：依赖注入（推荐）
-    @router.get("/example")
-    async def example(settings: Settings = Depends(get_settings)):
-        return {"app_name": settings.app_name}
-    ```
-    
-    Returns:
-        Settings: 全局配置对象单例
+    咱们加了个缓存，保证全厂配置只用加载一次，以后再调就直接拿现成的。
     """
     return Settings()
 

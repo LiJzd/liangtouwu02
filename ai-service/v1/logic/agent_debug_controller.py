@@ -1,6 +1,6 @@
 """
-Agent 调试控制器 - 提供 SSE 实时追踪接口
-用于调试多智能体的 ReAct 循环，实时推送内部状态
+Agent 调试控制器 - 专门用来“听诊”的
+通过 SSE 接口，把 AI 肚子里的“弯弯绕”（ReAct 思考循环）实时告诉前端。
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _queue_lock = asyncio.Lock()
 
 
 async def get_or_create_queue(client_id: str = "default") -> asyncio.Queue:
-    """获取或创建调试事件队列"""
+    """去储藏室拿这个客户端的“信箱”（异步队列），要是没有就新建一个。"""
     async with _queue_lock:
         if client_id not in _debug_queues:
             _debug_queues[client_id] = asyncio.Queue(maxsize=100)
@@ -29,12 +29,10 @@ async def get_or_create_queue(client_id: str = "default") -> asyncio.Queue:
 
 async def push_debug_event(event_type: str, data: dict, client_id: str = "default") -> None:
     """
-    推送调试事件到 SSE 流
+    往信箱里塞一条调试消息。
     
-    Args:
-        event_type: 事件类型 (thought, action, observation, final_answer, error)
-        data: 事件数据
-        client_id: 客户端 ID（支持多客户端隔离）
+    不管是 AI 的内心独白（thought），还是它要干的动作（action），
+    都得整整齐齐地发给老乡看。
     """
     queue = await get_or_create_queue(client_id)
     event = {
@@ -64,16 +62,9 @@ async def cleanup_queue(client_id: str) -> None:
 @router.get("/debug/agent-trace")
 async def agent_trace_stream(client_id: str = "default"):
     """
-    SSE 端点：实时推送 Agent 内部状态
+    开启调试直播间。
     
-    用法：
-    ```javascript
-    const evtSource = new EventSource('/api/v1/agent/debug/agent-trace?client_id=user123');
-    evtSource.onmessage = (e) => {
-        const event = JSON.parse(e.data);
-        console.log(event);
-    };
-    ```
+    前端只要连上这个“电台”，就能实时听到 AI 的最新动静了。
     """
     async def event_generator() -> AsyncGenerator[str, None]:
         queue = await get_or_create_queue(client_id)

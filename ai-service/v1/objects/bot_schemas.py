@@ -6,15 +6,21 @@ from pydantic import BaseModel, Field
 
 
 class BotHandleRequest(BaseModel):
+    """
+    机器人收到的“传话单”。
+    包含了老乡的 QQ、说的话，还有可能发过来的图。
+    """
     qq_user_id: str = Field(..., min_length=1)
-    message: str = Field("", description="用户消息文本，纯图片消息时可为空")
+    message: str = Field("", description="用户说的话，纯发图的时候可以不写字")
     guild_id: Optional[str] = None
-    image_urls: Optional[List[str]] = Field(None, description="用户发送的图片URL列表（多模态问诊）")
+    image_urls: Optional[List[str]] = Field(None, description="老乡发来的图片地址（多模态问诊）")
 
 
 class BotHandleResponse(BaseModel):
-    reply: str
-    image: Optional[str] = Field(None, description="Base64 编码的图片（可选）")
+    """
+    机器人给老乡的回信。
+    可能是几句贴心话，也可能是一张分析图（封装成 Base64 字符串）。
+    """
 
 
 class OutboxItem(BaseModel):

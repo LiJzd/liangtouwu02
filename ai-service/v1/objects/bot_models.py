@@ -1,3 +1,9 @@
+"""
+机器人数据库模型 - 咱家的“小账本”
+
+用来记着老主顾（User）的信息、谁订了简报（Subscription）、
+还有待发的信件（Outbox）和以前聊天的记录（Conversation）。
+"""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -11,6 +17,11 @@ class Base(DeclarativeBase):
 
 
 class BotUser(Base):
+    """
+    咱们的“老主顾”名单。
+    
+    记着人家的 QQ 号和进店时间，回头发福利或者打招呼能对得上号。
+    """
     __tablename__ = "bot_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -21,6 +32,11 @@ class BotUser(Base):
 
 
 class BotSubscription(Base):
+    """
+    每日简报的“订阅名单”。
+    
+    老乡想啥时候看、开没开启、上次啥时候发的，都在这儿勾选好了。
+    """
     __tablename__ = "bot_subscriptions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -34,6 +50,11 @@ class BotSubscription(Base):
 
 
 class BotOutbox(Base):
+    """
+    待发的“信件仓库”。
+    
+    准备发给老乡的话先存这儿，发成了打个勾（sent），失败了记个错，方便咱们查账。
+    """
     __tablename__ = "bot_outbox"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -46,6 +67,11 @@ class BotOutbox(Base):
 
 
 class BotConversation(Base):
+    """
+    聊天记录本。
+    
+    你一言我一言，咱们都得记笔账，下次聊天才接得上话。
+    """
     __tablename__ = "bot_conversations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

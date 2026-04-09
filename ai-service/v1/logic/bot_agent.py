@@ -48,10 +48,15 @@ _HELP_KEYWORDS = {
     "能做什么",
 }
 
+# ─── 给 AI 的角色设定（叮嘱） ───
+#
+# 这段话是讲给 AI 听的，核心就是让它“说人话、办人事”。
+# 咱们把人物设定为一个随和、专业的老师傅“韦俊旗”。
+# 哪怕它背地里在翻复杂的 RAG 知识库，回话也得像是在炕头上聊天一样亲切。
 _SYSTEM_PROMPT = (
     "# Role (角色设定)\n"
     "你是'掌上明猪'智慧农业监测系统的'首席数字兽医'与'贴身养殖管家'。,你的名字叫做韦俊旗"
-    "你的核心任务是全天候(7x24小时)为基层生猪养殖户提供精准、保姆式的指导，彻底解决由于夜间人工巡检真空以及基层兽医经验不足带来的疫病滞后风险。\n\n"
+    "你的核心任务是全天候(7x24小时)为基层生猪养殖户提供精准、保姆式的指导，彻底解决由于夜间人工巡检真空以及基层兽医 experience 不足带来的疫病滞后风险。\n\n"
     "# Audience Context (用户画像与语境)\n"
     "请时刻牢记你面对的用户群体特征：\n"
     "1. 你的服务对象主要是农民出身的养殖户，普遍年龄偏高，文化水平多数在初中及以下。\n"
@@ -79,6 +84,7 @@ _SYSTEM_PROMPT = (
     "11. 用户问猪场情况/现场/图片/视频/监控/有多少猪，调用 capture_pig_farm_snapshot\n"
     "12. 只回答用户最后一句问题，不要回复上一轮的问题\n"
     "13. 不要编造数据或夸张比喻\n"
+    "14. 如果用户发送了图片，优先基于视觉信息结合养殖知识进行判断。\n"
 )
 
 _SYSTEM_PROMPT_GENERAL = (
@@ -91,20 +97,10 @@ _SYSTEM_PROMPT_GENERAL = (
 
 
 async def ensure_user(session: AsyncSession, qq_user_id: str, guild_id: Optional[str] = None) -> BotUser:
-    result = await session.execute(select(BotUser).where(BotUser.qq_user_id == qq_user_id))
-    user = result.scalar_one_or_none()
-    if user is None:
-        user = BotUser(qq_user_id=qq_user_id, dms_guild_id=guild_id)
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user
-
-    if guild_id and user.dms_guild_id != guild_id:
-        user.dms_guild_id = guild_id
-        await session.commit()
-        await session.refresh(user)
-    return user
+    """
+    登记用户信息。
+    如果是头一回打交道，咱们就在数据库里给这位老乡建个档，以后好说话。
+    """
 
 
 def _parse_time(text: str) -> Optional[str]:
@@ -164,7 +160,11 @@ async def _save_turn(session: AsyncSession, qq_user_id: str, role: str, content:
 
 
 def _build_messages(system_prompt: str, history: list[BotConversation], user_text: str, image_urls: Optional[List[str]] = None) -> list[dict]:
-    """构建消息列表，支持多模态图片内容"""
+    """
+    拼出一串对话记录喂给 AI。
+    
+    重点：如果有图，咱们得按“字+图”的混合格式塞进去，不然 AI 看着也发懵。
+    """
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     for item in reversed(history):
         messages.append({"role": item.role, "content": item.content})
@@ -206,10 +206,10 @@ def _fallback_reply(text: str) -> str:
 
 async def _call_central_agent(qq_user_id: str, messages: list[dict], image_urls: Optional[List[str]] = None) -> tuple[Optional[str], Optional[str]]:
     """
-    调用中央智能体
+    去请示“系统大脑”。
     
-    Returns:
-        tuple[reply_text, image_base64]: (回复文本, 图片base64)
+    咱们会先试一试最厉害的多智能体模式（V2），
+    要是它这会儿开小差了，咱们就降级回单智能体模式（V1）兜个底。
     """
     settings = get_settings()
     if not settings.central_agent_url:
@@ -338,10 +338,9 @@ def _shorten_reply(text: str, max_lines: int = 8, max_sentences: int = 6, max_ch
 
 def _postprocess_reply(text: str) -> str:
     """
-    后处理 Agent 回复：
-    1. 移除固定开场白
-    2. 严格提取 Final Answer（防止思考链污染）
-    3. 压缩长度
+    给 AI 的回复打打补丁、洗洗脸。
+    
+    这步很重要，得干掉那些没用的废话，尤其是要把 AI 自言自语的思考过程给过滤掉。
     """
     text = (text or "").strip()
     if not text:
@@ -375,11 +374,7 @@ def _postprocess_reply(text: str) -> str:
 
 
 def _reply_danger() -> str:
-    return (
-        "先别急，这类异常有风险。\n"
-        f"{_EMO_WARN} 先给您一句确定话：如果出现高热、出血、快死的情况，要立刻联系当地畜牧局或专业兽医站。\n"
-        "如果不是这类情况，您告诉我'体温大概多少、是否拉稀、吃不吃料'，我继续帮您安排处理。"
-    )
+    """遇到硬茬（高危传染病）的叮嘱语。"""
 
 
 async def _handle_message_locked(

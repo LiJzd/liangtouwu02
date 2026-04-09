@@ -1,31 +1,22 @@
 """
-工具注册与管理系统 (Tool Registry & Management System)
-=====================================================
+这里是整个 AI 服务的“工具箱”，所有 Agent 能动用的招数都在这儿定义。
 
-本模块是整个AI服务的"工具箱"，负责定义和管理所有可供智能体调用的工具函数。
+大概干了这么几件事：
+1. 给工具贴标签：用 @tool 装饰器一贴，这个函数就能被 AI 识别到了。
+2. 统一指挥：不管工具内部怎么写，对外暴露的接口都是统一的异步调用。
+3. 门类齐全：
+   - 基础类：查个时间、报个平安啥的。
+   - 查数类：通过 Java 接口去翻猪只的档案数据。
+   - 看病类：翻知识库、查环境指标、找历史病历。
+   - 算命类（预测）：看猪猪以后能长多重。
+   - 报警类：发现不对劲赶紧发告警。
+   - 视觉类：盯着监控截图看。
 
-核心架构：
-1. 工具注册机制：使用装饰器模式 (@tool) 自动注册工具到全局注册表
-2. 工具调用接口：提供统一的异步调用接口，支持参数解析和错误处理
-3. 工具分类：
-   - 基础工具：时间查询、健康检查等
-   - 数据查询工具：猪只档案、列表查询（通过Java API）
-   - 诊断工具：疾病知识库、环境监测、历史病例检索
-   - 预测工具：生长曲线预测（基于RAG）
-   - 告警工具：异常告警发布与语音播报
-   - 视觉工具：视频截图与AI识别
-
-工具注册流程：
-1. 使用 @tool(name, description) 装饰器标记函数
-2. 装饰器自动将工具注册到 _REGISTRY 全局字典
-3. Agent通过 list_tools() 获取所有可用工具
-4. Agent通过 Tool.handler(arg) 调用具体工具
-
-工具调用约定：
-- 所有工具函数必须是异步函数 (async def)
-- 输入参数统一为字符串类型（支持JSON格式）
-- 返回值统一为字符串类型（通常是JSON格式）
-- 工具内部负责参数解析、类型转换和错误处理
+干活的规矩：
+- 必须得是异步函数 (async def)，别让系统卡死。
+- 输入参数一般就是一串字（要是复杂的就弄成 JSON 字符串）。
+- 吐出来的结果也得是字符串，方便 AI 读。
+- 参数怎么拆、类型怎么转，工具自己得负责好。
 """
 from __future__ import annotations
 
@@ -83,12 +74,12 @@ JAVA_API_TIMEOUT = 30.0  # 超时时间（秒）
 @dataclass(frozen=True)
 class Tool:
     """
-    工具定义数据类
+    这就是一个工具的画像。
     
     Attributes:
-        name: 工具名称（唯一标识符）
-        description: 工具描述（供LLM理解工具用途）
-        handler: 工具处理函数（异步函数，接收字符串参数，返回字符串结果）
+        name: 工具的唯一 ID，叫啥名全靠它。
+        description: 这段话是写给 AI 看的，告诉它啥时候该掏出这个工具。
+        handler: 真正干活的那个异步函数。
     """
     name: str
     description: str
@@ -101,23 +92,15 @@ _REGISTRY: Dict[str, Tool] = {}
 
 def tool(name: str, description: str) -> Callable[[Callable[[str], Awaitable[str]]], Callable[[str], Awaitable[str]]]:
     """
-    工具注册装饰器
+    把普通函数包装成工具的魔术贴。
     
-    使用方法：
-        @tool(name="工具名称", description="工具描述")
-        async def my_tool(arg: str) -> str:
-            # 工具实现
-            return result
-    
-    Args:
-        name: 工具名称（在Agent中调用时使用）
-        description: 工具功能描述（LLM根据此描述决定是否调用该工具）
-    
-    Returns:
-        装饰器函数
+    用法：
+        @tool(name="查天气", description="用来查现在的天气预报")
+        async def weather_func(city: str) -> str:
+            ...
     """
     def decorator(func: Callable[[str], Awaitable[str]]) -> Callable[[str], Awaitable[str]]:
-        # 将工具注册到全局注册表
+        # 往全局注册表里塞一个新工具
         _REGISTRY[name] = Tool(name=name, description=description, handler=func)
         return func
 
@@ -140,12 +123,7 @@ def list_tools() -> Dict[str, Tool]:
 
 def _parse_args(text: str) -> Dict[str, Any]:
     """
-    智能参数解析器：支持多种输入格式，并自动映射常用参数名。
-    
-    支持的格式：
-    1. JSON格式：{"key": "value", "key2": 123}
-    2. 键值对格式：key=value, key2=value2
-    3. 纯文本格式：直接作为参数
+    智能拆包器：管你塞进来的是 JSON、键值对还是乱七八糟的字，咱们都得把它理顺。
     """
     raw = (text or "").strip()
     data: Dict[str, Any] = {}
@@ -234,12 +212,7 @@ def _coerce_int(value: Any, default: int | None = None) -> int | None:
 
 @tool(name="当前时间", description="返回服务器当前时间")
 async def tool_current_time(_: str) -> str:
-    """
-    获取服务器当前时间
-    
-    Returns:
-        格式化的时间字符串（YYYY-MM-DD HH:MM:SS）
-    """
+    """报个时。"""
     now = datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -323,22 +296,9 @@ async def tool_list_pigs(arg: str) -> str:
 @tool(name="get_pig_info_by_id", description="查询猪只基础信息与生长周期（通过 Java API）")
 async def tool_get_pig_info_by_id(arg: str) -> str:
     """
-    查询猪只详细档案
+    查查某头猪的详细户口本。
     
-    根据猪只ID查询完整的档案信息，包括基础信息和生长周期数据。
-    
-    参数格式（JSON或键值对）：
-        pig_id: 猪只 ID（必填）
-        include_lifecycle: 是否包含生长周期数据（默认 true）
-    
-    Returns:
-        JSON格式的猪只详细档案，包含：
-        - 基础信息：品种、区域、当前体重、当前月龄等
-        - 生长周期：每月体重记录（如果 include_lifecycle=true）
-    
-    注意：
-        - 需要从上下文获取 user_id（当前使用演示值）
-        - 生长周期数据用于生成生长曲线和预测
+    不管是品种、生日还是它以前每个月的体重，统统翻出来。
     """
     data = _parse_args(arg)
     pig_id = None

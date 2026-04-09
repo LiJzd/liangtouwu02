@@ -1,9 +1,8 @@
 """
-语音转文字工具模块
-使用 DashScope Paraformer-v2 将用户发送的语音消息转为文字
+语音转文字的小帮手
 
-数据流：
-  QQ用户发送语音 → bot_runner 提取语音URL → voice_to_text() → 返回识别文本
+老乡发来一段语音，咱们就得靠它给翻译成字儿。
+咱们这边主要对接的是阿里云的语音识别服务，好让 AI 也得听得懂方言和土话。
 """
 from __future__ import annotations
 
@@ -54,7 +53,7 @@ async def voice_to_text(audio_url: str) -> Optional[str]:
 
 
 async def _transcribe_with_paraformer(audio_url: str, api_key: str) -> Optional[str]:
-    """使用 DashScope Paraformer-v2 模型进行语音识别（HTTP API 方式）"""
+    """喊阿里云的 Paraformer 模型来帮个忙，直接通过 URL 把活儿干了。"""
     try:
         logger.info(f"开始 Paraformer 语音识别，URL: {audio_url[:80]}...")
 
@@ -92,7 +91,7 @@ async def _transcribe_with_paraformer(audio_url: str, api_key: str) -> Optional[
 
             logger.info(f"Paraformer 任务已提交: task_id={task_id}")
 
-            # 轮询等待结果（最多等30秒）
+            # 把任务交上去后，咱们得隔一秒问一次这活儿干完没（最多等30秒）
             query_url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
             query_headers = {"Authorization": f"Bearer {api_key}"}
 
@@ -157,8 +156,8 @@ async def _transcribe_with_openai_compat(
     audio_url: str, api_key: str, settings
 ) -> Optional[str]:
     """
-    降级方案：先下载语音文件，再通过 DashScope OpenAI 兼容接口
-    使用 whisper 接口转写
+    这是个保底的法子：
+    先把语音文件下载到本地，再塞给接口。费点劲，但胜在能解决问题。
     """
     try:
         logger.info("尝试 OpenAI 兼容接口语音识别...")

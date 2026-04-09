@@ -6,11 +6,19 @@ from pydantic import BaseModel, Field
 
 
 class AgentMessage(BaseModel):
-    role: str = Field(..., description="system/user/assistant")
-    content: Any = Field(..., description="文本字符串或多模态内容数组")
+    """
+    咱聊天的一句词儿。
+    包含了谁说的（role）以及说了啥（content）。
+    """
+    role: str = Field(..., description="谁说的（system/user/assistant）")
+    content: Any = Field(..., description="说的话，可以是字儿，也可以是带着图的数组")
 
 
 class AgentChatRequest(BaseModel):
+    """
+    找 AI 聊天的“邀请函”。
+    把你想说的话、历史记录，要是带了图也一并带上。
+    """
     user_id: str
     messages: List[AgentMessage]
     metadata: Optional[Dict[str, Any]] = None

@@ -24,7 +24,8 @@ class BotClient(botpy.Client):
         self.httpx = httpx.AsyncClient(base_url=self.settings.bot_api_base, timeout=90)
 
     async def on_ready(self):
-        _log.info(f"robot {self.robot.name} on_ready")
+        _log.info(f"机器人 {self.robot.name} 成功上线！")
+        # 顺便把后台发信循环也跑起来
         asyncio.create_task(self._outbox_loop())
 
     async def on_direct_message_create(self, message: DirectMessage):
@@ -48,8 +49,7 @@ class BotClient(botpy.Client):
             reply_func=reply_func,
         )
 
-    async def on_c2c_message_create(self, message: C2CMessage):
-        # 提取用户发送的图片和语音附件（多模态问诊支持）
+        # 看看消息里有没有图片或者语音（得支持老乡发图问诊和发语音啊）
         image_urls = []
         voice_urls = []
         if hasattr(message, 'attachments') and message.attachments:
@@ -58,40 +58,40 @@ class BotClient(botpy.Client):
                 content_type = str(getattr(att, 'content_type', '')).lower()
                 if not url:
                     continue
-                # 确保URL以https开头
+                # 确保 URL 是 https 的，不然有些地方加载不出来
                 if not url.startswith('http'):
                     url = 'https://' + url
                 
                 if 'image' in content_type or url.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
                     image_urls.append(url)
-                    _log.info(f"提取到图片附件: {url}")
+                    _log.info(f"抓到一张图片: {url}")
                 elif 'voice' in content_type or 'audio' in content_type or url.lower().endswith(('.silk', '.amr', '.wav', '.mp3', '.ogg')):
                     voice_urls.append(url)
-                    _log.info(f"提取到语音附件: {url}")
+                    _log.info(f"抓到一段语音: {url}")
         
-        # 语音转文字：将语音内容转写后拼接到消息文本
+        # 语音转文字：老乡发语音咱们也得听懂，先转成字儿再说
         message_text = message.content or ""
         if voice_urls:
-            _log.info(f"检测到 {len(voice_urls)} 条语音消息，开始转写...")
+            _log.info(f"发现 {len(voice_urls)} 条语音，后台正在转写...")
             try:
                 from v1.logic.voice_to_text import voice_to_text
                 for voice_url in voice_urls:
                     transcribed = await voice_to_text(voice_url)
                     if transcribed:
-                        _log.info(f"语音转写成功: {transcribed[:100]}")
-                        # 将语音转写结果拼接到消息文本
+                        _log.info(f"转写成功: {transcribed[:100]}")
+                        # 把转出来的字儿跟原本的文字拼在一起
                         if message_text:
                             message_text = f"{message_text} {transcribed}"
                         else:
                             message_text = transcribed
                     else:
-                        _log.warning(f"语音转写失败: {voice_url[:80]}")
+                        _log.warning(f"这块语音没转出来: {voice_url[:80]}")
                         if not message_text:
-                            message_text = "[语音消息转写失败，请重新发送或用文字描述]"
+                            message_text = "[语音转写失败了，老乡要不您打字试试？]"
             except Exception as e:
-                _log.error(f"语音转写异常: {e}", exc_info=True)
+                _log.error(f"语音转写出差错啦: {e}", exc_info=True)
                 if not message_text:
-                    message_text = "[语音消息处理失败，请用文字重新描述]"
+                    message_text = "[语音处理出故障了，请麻烦打字描述下]"
         
         _log.info(
             f"c2c received: user_openid={message.author.user_openid} msg_id={message.id} "
@@ -100,28 +100,27 @@ class BotClient(botpy.Client):
         
         async def reply_func(reply_text, image_path=None):
             if image_path:
-                # C2C 支持图片，需要先上传图片获取 Media 对象
+                # 给机器人发图比较麻烦，得先传到图床拿个 URL
                 try:
                     import base64
                     import httpx
                     import uuid
                     import shutil
                     
-                    # 读取图片文件
+                    # 先把图读出来
                     with open(image_path, 'rb') as f:
                         image_data = f.read()
                     
                     file_url = None
                     
-                    # 方案1: 使用 img.scdn.io 图床（国内，无需 API key，稳定可靠）
+                    # 办法一：用那个挺稳的免费图床
                     try:
-                        _log.info("尝试使用 img.scdn.io 图床上传图片...")
+                        _log.info("尝试往 img.scdn.io 传图...")
                         async with httpx.AsyncClient(timeout=30) as client:
                             files = {'image': ('image.jpg', image_data, 'image/jpeg')}
-                            # 尝试使用最快的 CDN 域名
                             data = {
-                                'outputFormat': 'jpeg',  # 使用 jpeg 格式，兼容性更好
-                                'cdn_domain': 'cloudflareimg.cdn.sn'  # 使用 CloudFlare CDN，速度更快
+                                'outputFormat': 'jpeg',
+                                'cdn_domain': 'cloudflareimg.cdn.sn'
                             }
                             response = await client.post(
                                 "https://img.scdn.io/api/v1.php",
@@ -133,111 +132,66 @@ class BotClient(botpy.Client):
                             
                             if result.get("success"):
                                 file_url = result.get("url")
-                                _log.info(f"图片已上传到 img.scdn.io，URL: {file_url}")
-                                if result.get("message"):
-                                    _log.info(f"上传信息: {result['message']}")
+                                _log.info(f"传上去了，地址是: {file_url}")
                             else:
-                                _log.warning(f"img.scdn.io 上传失败: {result.get('message', '未知错误')}")
+                                _log.warning(f"img.scdn.io 没传成: {result.get('message', '未知错误')}")
                     except Exception as e:
-                        _log.warning(f"img.scdn.io 上传失败: {e}")
+                        _log.warning(f"img.scdn.io 传图报错: {e}")
                     
-                    # 方案2: 使用本地静态文件服务（如果配置了 PUBLIC_URL）
+                    # 办法二：如果图床不行，看看能不能用咱们自己的静态文件路径
                     if not file_url:
                         public_url = os.getenv("PUBLIC_URL", "")
                         if public_url:
                             try:
-                                _log.info("使用本地静态文件服务...")
-                                
-                                # 将文件复制到 static/temp 目录
+                                _log.info("试试自家的静态文件服务...")
                                 file_id = str(uuid.uuid4())
                                 file_ext = os.path.splitext(image_path)[1]
                                 static_filename = f"{file_id}{file_ext}"
-                                
-                                # 获取 static/temp 目录路径
                                 static_temp_dir = os.path.join(os.path.dirname(__file__), "static", "temp")
                                 os.makedirs(static_temp_dir, exist_ok=True)
-                                
                                 static_path = os.path.join(static_temp_dir, static_filename)
                                 shutil.copy2(image_path, static_path)
-                                
                                 file_url = f"{public_url}/static/temp/{static_filename}"
-                                _log.info(f"图片已复制到静态目录，URL: {file_url}")
                                 
-                                # 设置延迟清理任务
+                                # 定个闹钟，一分钟后把临时文件删了，省得占地方
                                 async def cleanup():
-                                    await asyncio.sleep(60)  # 60秒后删除
+                                    await asyncio.sleep(60)
                                     try:
                                         os.unlink(static_path)
-                                        _log.info(f"临时静态文件已删除: {static_path}")
-                                    except Exception as e:
-                                        _log.warning(f"删除临时静态文件失败: {e}")
-                                
+                                        _log.info(f"临时图删掉啦: {static_path}")
+                                    except Exception:
+                                        pass
                                 asyncio.create_task(cleanup())
-                                
                             except Exception as e:
-                                _log.warning(f"本地静态文件服务失败: {e}")
-                                file_url = None
+                                _log.warning(f"静态文件服务也白瞎了: {e}")
                     
-                    # 方案3: 使用 ImgBB（如果配置了有效的 API key）
+                    # 如果还是没拿到 URL，只能报错了
                     if not file_url:
-                        imgbb_api_key = os.getenv("IMGBB_API_KEY", "")
-                        if imgbb_api_key and imgbb_api_key != "d0e8e0b3b9c6c4e8f3b9c6c4e8f3b9c6":
-                            try:
-                                _log.info("尝试使用 ImgBB 图床上传图片...")
-                                image_base64 = base64.b64encode(image_data).decode('utf-8')
-                                async with httpx.AsyncClient(timeout=30) as client:
-                                    response = await client.post(
-                                        "https://api.imgbb.com/1/upload",
-                                        data={
-                                            "key": imgbb_api_key,
-                                            "image": image_base64,
-                                        }
-                                    )
-                                    response.raise_for_status()
-                                    result = response.json()
-                                    
-                                    if result.get("success"):
-                                        file_url = result["data"]["url"]
-                                        _log.info(f"图片已上传到 ImgBB，URL: {file_url}")
-                                    else:
-                                        _log.warning(f"ImgBB 上传失败: {result}")
-                            except Exception as e:
-                                _log.warning(f"ImgBB 上传失败: {e}")
+                        _log.error("实在没招了，图片传不上去，请检查 PUBLIC_URL 配置")
+                        raise ValueError("图片上传全失败了")
                     
-                    # 如果所有方案都失败，提示配置说明
-                    if not file_url:
-                        _log.error("所有图片上传方案均失败，请参考 docs/QQ_BOT_IMAGE_SETUP.md 配置图片发送功能")
-                        raise ValueError("图片上传失败，请配置 PUBLIC_URL 或有效的图床 API Key")
-                    
-                    # 尝试方案1: 使用 srv_send_msg=True 让 QQ 直接发送图片
+                    # 图片 URL 拿到了，让 QQ 机器人发出去
                     try:
-                        _log.info("尝试使用 srv_send_msg=True 直接发送图片...")
+                        _log.info("让 QQ 直接把图甩过去...")
                         await self.api.post_c2c_file(
                             openid=message.author.user_openid,
-                            file_type=1,  # 1=图片
+                            file_type=1,
                             url=file_url,
-                            srv_send_msg=True  # 让 QQ 服务器直接发送
+                            srv_send_msg=True
                         )
-                        _log.info(f"图片已通过 QQ 服务器发送")
-                        
-                        # 等待一下再发送文本
+                        # 歇口气再发文字，体验更好
                         await asyncio.sleep(0.5)
                         await message.reply(content=reply_text)
-                        _log.info(f"文本消息已发送")
-                        
                     except Exception as e:
-                        _log.warning(f"srv_send_msg 方式失败: {e}")
-                        
-                        # 降级方案：发送图片链接
-                        enhanced_reply = f"{reply_text}\n\n📷 查看猪场监控图片：{file_url}"
+                        _log.warning(f"直接发图失败了，降级发链接吧: {e}")
+                        enhanced_reply = f"{reply_text}\n\n📷 监控画面在这儿看：{file_url}"
                         await message.reply(content=enhanced_reply)
-                        _log.info(f"已发送图片链接作为备用方案")
                     
                 except Exception as e:
-                    _log.error(f"发送图片失败: {e}", exc_info=True)
-                    _log.warning(f"仅发送文本消息（图片发送失败）")
+                    _log.error(f"发图彻底失败: {e}")
                     await message.reply(content=reply_text)
             else:
+                # 没图就直接发文字
                 await message.reply(content=reply_text)
         
         await self._handle_and_reply(
@@ -314,12 +268,13 @@ class BotClient(botpy.Client):
             _log.warning(f"reply failed: {exc}")
 
     async def _outbox_loop(self):
+        """后台发信小助手：每隔几秒看看有没有还没发出去的消息。"""
         interval = max(3, int(self.settings.bot_outbox_poll_seconds))
         while True:
             try:
                 await self._send_pending()
             except Exception as exc:
-                _log.warning("outbox loop error: %r", exc)
+                _log.warning("发信小助手出差错啦: %r", exc)
             await asyncio.sleep(interval)
 
     async def _send_pending(self):

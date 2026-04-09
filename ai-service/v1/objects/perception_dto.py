@@ -1,10 +1,8 @@
 """
-感知层数据传输对象 (等效于 SpringBoot 的 DTO/VO + Hibernate Validator)
+感知层的数据“合同”
 
-功能说明：
-- 使用 Pydantic 进行严格的数据校验（类似 @Valid + @NotNull/@Size 等注解）
-- 定义 API 的输入输出契约（Schema First 设计）
-- 自动生成 OpenAPI 文档（类似 Swagger 的 @ApiModel/@ApiModelProperty）
+这里定义了咱们和后端系统打交道的规矩。
+我们用 Pydantic 来把关，确保传进来的数据都是齐整的。
 """
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -16,9 +14,9 @@ from datetime import datetime
 
 class PerceptionRequest(BaseModel):
     """
-    感知推理请求体（等效于 SpringBoot 的 @RequestBody DTO）
+    具体的识别请求包。
     
-    用于接收来自 SpringBoot 端的图像推理请求
+    用来接收从主系统传过来的图像识别任务。
     """
     
     image_url: HttpUrl = Field(
@@ -64,7 +62,7 @@ class PerceptionRequest(BaseModel):
 
 class DetectionObject(BaseModel):
     """
-    单个检测目标（等效于 SpringBoot 的嵌套 VO）
+    认出来的“宝贝”物件。
     """
     
     class_id: int = Field(..., description="类别 ID（0=猪, 1=人, 2=异常物体等）")
@@ -82,9 +80,9 @@ class DetectionObject(BaseModel):
 
 class PerceptionResponse(BaseModel):
     """
-    感知推理响应体（等效于 SpringBoot 的统一响应包装类 Result<T>）
+    干完活儿后的回信。
     
-    返回给 SpringBoot 端的标准 JSON 结构
+    告诉后端咱们识别的结果，还有这次干活花了多少时间。
     """
     
     code: int = Field(default=200, description="业务状态码（200=成功, 500=失败）")
@@ -135,7 +133,7 @@ class PerceptionResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """
-    统一错误响应（等效于 SpringBoot 的全局异常处理返回结构）
+    万一出故障了，统一的“道歉声明”。
     """
     
     code: int = Field(..., description="错误码（4xx=客户端错误, 5xx=服务端错误）")

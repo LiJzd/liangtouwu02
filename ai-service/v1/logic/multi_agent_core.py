@@ -1,26 +1,24 @@
 """
-多智能体架构核心 - Supervisor + Worker 模式
-==========================================
+这里是多智能体系统的核心，主要用了 Supervisor + Worker 那套架构。
+简单点说，就是有个“调度员”先看用户想干嘛（意图路由），然后再把活儿分给对应的“专家”去干。
 
-本模块实现了基于意图路由的多智能体协作系统，采用经典的 Supervisor-Worker 架构。
-
-架构设计：
+架构大概长这样：
 ┌─────────────────────────────────────────────────────────┐
-│                    用户输入                              │
-│              (文本 + 可选图片)                           │
+│                    用户进来的输入                        │
+│              (文字，有时候带点图片)                      │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
          ┌───────────────────────┐
-         │  SupervisorAgent      │  ← 意图路由中心
-         │  (意图识别与分发)      │
+         │  SupervisorAgent      │  ← 负责看意图、分活儿
+         │  (意图识别与分发)       │
          └───────────┬───────────┘
                      │
          ┌───────────┼───────────┐
          │           │           │
          ▼           ▼           ▼
     ┌────────┐  ┌────────┐  ┌────────┐
-    │VetAgent│  │DataAgent│ │Perception│  ← 专家Worker
+    │VetAgent│  │DataAgent│ │Perception│  ← 这里的都是干活的专家
     │兽医诊断│  │数据查询│  │视觉识别│
     └────────┘  └────────┘  └────────┘
          │           │           │
@@ -28,54 +26,33 @@
                      │
                      ▼
               ┌─────────────┐
-              │  最终答案    │
+              │  最后的回答  │
               └─────────────┘
 
-核心组件：
-1. SupervisorAgent：意图路由器
-   - 分析用户输入，判断需要哪个专家处理
-   - 支持基于LLM的智能路由和基于规则的降级路由
-   - 多模态支持：检测到图片时自动路由到兽医Agent
+主要模块说明：
+1. SupervisorAgent：专门管调度的。
+   - 分析下用户想问啥，然后分给对应的专家。
+   - 挺聪明的，如果 LLM 不好使了，还有一套备选的规则顶上。
+   - 看到有图片进来，一般就直接让兽医去看了。
 
-2. WorkerAgent：专家基类
-   - 定义了所有专家Agent的通用接口
-   - 实现了标准的ReAct推理循环
-   - 提供工具调用、结果提取等通用功能
+2. WorkerAgent：专家的基类。
+   - 定义了所有专家都要守的规矩。
+   - 跑的是经典的 ReAct 模式：先思考、再行动、最后看结果。
 
-3. 具体Worker实现：
-   - VetAgent：兽医诊断专家（支持多模态图片问诊）
-   - DataAgent：数据查询专家（猪只档案、生长曲线）
-   - PerceptionAgent：视觉识别专家（视频监控分析）
+3. 具体专家实现：
+   - VetAgent：懂两头乌疾病的兽医（多模态版，能直接看图片）。
+   - DataAgent：搞数据的（查猪只档案、生长曲线报告什么的）。
+   - PerceptionAgent：看监控的（分析监控视频和截图）。
 
-4. MultiAgentOrchestrator：协调器
-   - 统一的多智能体执行入口
-   - 管理所有Worker实例
-   - 处理路由和结果返回
+4. MultiAgentOrchestrator：总协调人。
+   - 整个系统的入口，管着所有的专家，负责整体流转过程。
 
-技术特性：
-- ReAct推理：Thought → Action → Observation 循环
-- 工具链调用：每个Worker有专属的工具集
-- 多模态支持：文本 + 图片混合输入
-- 降级机制：LLM不可用时自动切换到规则引擎
-- Rich美化：终端输出带颜色和格式化
-- 调试支持：集成SSE调试流，实时查看推理过程
-
-使用示例：
-    # 创建协调器
-    orchestrator = MultiAgentOrchestrator()
-    
-    # 构建上下文
-    context = AgentContext(
-        user_id="user_001",
-        user_input="查询猪只LTW-001的生长曲线",
-        chat_history=[],
-        metadata={},
-        client_id="web_client_001"
-    )
-    
-    # 执行
-    result = await orchestrator.execute(context)
-    print(result.answer)
+咱们这套东西的亮点：
+- 逻辑通顺：用的 ReAct 推理，每一步干啥都清清楚楚。
+- 工具齐全：每个专家都有自己压箱底的工具包。
+- 多模态：不光能聊文字，图也能看。
+- 容错性好：LLM 如果断了，系统也能靠规则跑下去。
+- 方便调试：控制台输出带颜色，还有 SSE 流可以看到中间是怎么思考的。
 """
 from __future__ import annotations
 
@@ -128,17 +105,17 @@ except Exception:
 @dataclass
 class AgentContext:
     """
-    Agent执行上下文
+    Agent 跑起来需要的背景信息。
     
-    封装了Agent执行所需的所有输入信息，包括用户输入、历史对话、元数据等。
+    把用户说了啥、以前聊过啥、还有图片的 URL 都打包在这个类里。
     
     Attributes:
-        user_id: 用户唯一标识符
-        user_input: 用户当前输入的文本
-        chat_history: 历史对话记录列表（每条记录包含role和content）
-        metadata: 额外的元数据（如pig_id等）
-        client_id: 客户端标识符（用于SSE调试流）
-        image_urls: 多模态图片URL列表（可选，用于图片问诊）
+        user_id: 谁在问
+        user_input: 问了啥
+        chat_history: 以前聊了啥（旧的对话记录）
+        metadata: 一些额外信息（比如猪的 ID 啥的）
+        client_id: 客户端标识，用来发 SSE 调试流的
+        image_urls: 如果用户传了图，URL 就在这儿
     """
     user_id: str
     user_input: str
@@ -151,19 +128,19 @@ class AgentContext:
 @dataclass
 class AgentResult:
     """
-    Agent执行结果
+    Agent 跑完给出的最后结果。
     
-    封装了Agent执行后的所有输出信息，包括答案、思考过程、工具调用记录等。
+    包含回答、思考过程，还有用到的工具记录。
     
     Attributes:
-        success: 执行是否成功
-        answer: 最终答案（返回给用户的文本）
-        worker_name: 执行该任务的Worker名称（可选）
-        thoughts: 思考过程列表（ReAct的Thought步骤）
-        tool_outputs: 工具调用输出列表（ReAct的Observation步骤）
-        error: 错误信息（如果执行失败）
-        image: Base64编码的图片（可选，用于返回生成的图片）
-        metadata: 额外的元数据（如执行模式、工具调用次数等）
+        success: 成没成功
+        answer: 最后回给用户的文字
+        worker_name: 哪个专家干的活（没特定专家就是 direct_reply）
+        thoughts: ReAct 思考的全程记录
+        tool_outputs: 调用工具返回的原状
+        error: 要是报错了，这里存报错信息
+        image: 如果生成了什么图（比如 Base64），也存在这
+        metadata: 一些杂项统计（执行模式、用了几次工具等）
     """
     success: bool
     answer: str
@@ -210,7 +187,7 @@ SUPERVISOR_PROMPT = """你是智能体调度中心。根据用户问题，选择
 
 
 class SupervisorAgent:
-    """意图路由 Agent"""
+    """这位负责看意图、分活儿，是个调度员"""
     
     def __init__(self):
         self.api_key, self.base_url, self.model = self._get_llm_config()
@@ -230,14 +207,14 @@ class SupervisorAgent:
     
     def route(self, user_input: str, has_image: bool = False) -> str:
         """
-        路由用户请求到合适的 Worker
+        把用户请求指派给最合适的专家
         
         Args:
-            user_input: 用户文本输入
-            has_image: 是否包含图片（多模态问诊）
+            user_input: 用户发来的话
+            has_image: 有没有带图片（带图的一般都得走多模态问诊）
         
         Returns:
-            worker_name: vet_agent, data_agent, perception_agent, 或 direct_reply
+            worker_name: 指派的专家名字（或者 direct_reply 咱自己回）
         """
         # 有图片时直接路由到兽医Agent进行视觉诊断
         if has_image:
@@ -290,7 +267,7 @@ class SupervisorAgent:
             return self._rule_based_route(user_input)
     
     def _rule_based_route(self, user_input: str) -> str:
-        """规则引擎兜底路由"""
+        """万一 LLM 挂了，靠这些关键词也能兜住逻辑"""
         text = user_input.lower()
 
         # 每日简报关键词（优先最高）
@@ -344,7 +321,7 @@ class SupervisorAgent:
 # ============================================================
 
 class WorkerAgent(ABC):
-    """Worker Agent 抽象基类"""
+    """所有专家的祖宗类，规定了大家怎么干活"""
     
     def __init__(self, name: str, system_prompt: str, tools: List[LCTool]):
         self.name = name
@@ -372,13 +349,13 @@ class WorkerAgent(ABC):
     
     async def execute(self, context: AgentContext) -> AgentResult:
         """
-        执行 Worker 的 ReAct 循环
+        跑一下专家的 ReAct 循环（思考 -> 找工具 -> 观察 -> 最后给答案）
         
         Args:
-            context: 执行上下文
+            context: 开始干活前的背景资料
         
         Returns:
-            AgentResult: 执行结果
+            AgentResult: 最后的干活结果
         """
         if not HAS_LANGCHAIN:
             return AgentResult(
@@ -525,7 +502,7 @@ class WorkerAgent(ABC):
             )
     
     def _build_react_prompt(self) -> PromptTemplate:
-        """构建 ReAct 提示词模板"""
+        """给 LLM 定的规矩，让它按 Thought/Action/Final Answer 的套路出牌"""
         template = f"""{self.system_prompt}
 
 你可以使用以下工具：
@@ -582,7 +559,7 @@ Thought: {{agent_scratchpad}}"""
         return input_text
     
     def _extract_final_answer(self, agent_output: str) -> str:
-        """提取 Final Answer（增强版，能从多种格式中提取有用答案）"""
+        """从一堆繁琐的思考记录里，把最后的答案抠出来"""
         if not agent_output:
             return ""
         
@@ -623,7 +600,7 @@ Thought: {{agent_scratchpad}}"""
 # ============================================================
 
 class VetAgent(WorkerAgent):
-    """兽医诊断专家（支持多模态图片问诊 + 强制工具链诊断）"""
+    """咱两头乌生猪的资深兽医（支持看病、看图，流程管得比较严）"""
     
     def __init__(self):
         system_prompt = """你是资深的畜牧兽医专家，专注于两头乌生猪的疾病诊断和健康管理。
@@ -655,25 +632,24 @@ class VetAgent(WorkerAgent):
 基于排查收集到的真实数据，分析原因并给出最终的诊断结论。
 
 ## 严格约束（违反将被系统拒绝）
-- ⚠️ 你必须调用至少 2 个工具后才能给出 Final Answer
-- ⚠️ 禁止在没有调用工具的情况下直接编造诊断结果
-- ⚠️ Final Answer 中必须引用工具返回的具体数据作为诊断依据
+-  你必须调用至少 2 个工具后才能给出 Final Answer
+-  禁止在没有调用工具的情况下直接编造诊断结果
+-  Final Answer 中必须引用工具返回的具体数据作为诊断依据
 
 ## 输出要求
 - 极度通俗化，避免专业术语，像跟老乡面对面聊天
-- 使用表情符号分段（🌡️ 💊 ⚠️ 等）
 - 称呼用"老乡/师傅"
 - 回复控制在 3-5 句话
 - 格式示例：
-  🌡️ 环境：舍温XX度，正常/偏高
-  🔍 判断：根据XX症状，可能是XX病
-  💊 建议：先XXX，再XXX
-  ⚠️ 注意：如果XX，要联系畜牧局"""
+   环境：舍温XX度，正常/偏高
+   判断：根据XX症状，可能是XX病
+   建议：先XXX，再XXX
+   注意：如果XX，要联系畜牧局"""
         
         super().__init__(name="vet_agent", system_prompt=system_prompt, tools=[])
     
     def get_tools(self) -> List[LCTool]:
-        """兽医 Agent 可用的全部诊断工具"""
+        """兽医随身带的诊疗箱，里面全是各种查询接口"""
         from v1.logic.bot_tools import list_tools
         
         all_tools = list_tools()
@@ -702,8 +678,8 @@ class VetAgent(WorkerAgent):
 
     async def execute(self, context: AgentContext) -> AgentResult:
         """
-        执行兽医诊断。
-        有图片时走二阶段流程（视觉分析→工具链），无图片走标准 ReAct。
+        开始看病。
+        要是带了图，咱就走两步（先看图再查表）；只有字的话，咱就直接开始推理。
         """
         if context.image_urls:
             return await self._execute_multimodal_two_stage(context)
@@ -842,9 +818,9 @@ class VetAgent(WorkerAgent):
     
     async def _execute_multimodal_two_stage(self, context: AgentContext) -> AgentResult:
         """
-        二阶段多模态诊断：
-        阶段1：立即调用视觉模型分析图片（趁URL未过期），提取观察到的症状
-        阶段2：将视觉分析结果作为症状描述，走 ReAct 工具链进行交叉验证和综合诊断
+        看图看病的两步走方案：
+        第一步：赶紧把图片给视觉模型（趁着 URL 还新鲜没过期），让它说看到啥了。
+        第二步：拿视觉发现当证据，再查查知识库和环境，给老乡一个最准的说法。
         """
         import os
         settings = get_settings()
@@ -1833,7 +1809,7 @@ class BriefingAgent(WorkerAgent):
 
 
 class MultiAgentOrchestrator:
-    """多智能体协调器"""
+    """多智能体的大总管处理器"""
     
     def __init__(self):
         self.supervisor = SupervisorAgent()
@@ -1847,11 +1823,11 @@ class MultiAgentOrchestrator:
     
     async def execute(self, context: AgentContext) -> AgentResult:
         """
-        执行多智能体协作流程
+        多智能体协作的一个闭环流程：
         
-        1. Supervisor 路由
-        2. Worker 执行
-        3. 返回结果
+        1. 调度员看意图分活儿
+        2. 对应的专家上手开干
+        3. 整理结果返回给用户
         """
         # 路由（传递是否有图片）
         has_image = bool(context.image_urls)

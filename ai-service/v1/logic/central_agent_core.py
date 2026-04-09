@@ -50,7 +50,7 @@ _ZH_TOOL_CALL = "工具调用"
 _ZH_INPUT = "输入"
 _ZH_OUTPUT = "输出"
 
-# ReAct 提示词模板
+# ReAct 思考模式的模板
 REACT_PROMPT_TEMPLATE = """你是一个智能助手，可以使用工具来回答问题。
 
 你可以使用以下工具：
@@ -82,14 +82,14 @@ Thought: {agent_scratchpad}"""
 
 
 class RichTraceHandler(BaseCallbackHandler):
-    """使用 Rich 库高亮显示 Agent 内部状态"""
+    """这个类主要负责把 Agent 的“内心戏”用漂亮的方式打印出来，顺便同步给前端调试看。"""
 
     def __init__(self, client_id: str = "default"):
         super().__init__()
         self.client_id = client_id
 
     def on_agent_action(self, action, **kwargs):  # type: ignore[override]
-        """Agent 决策时触发"""
+        """当 Agent 决定要做啥动作（调啥工具）的时候，就会触发这里。"""
         tool_name = getattr(action, "tool", "unknown")
         tool_input = getattr(action, "tool_input", "")
         log_text = getattr(action, "log", "")
@@ -131,7 +131,7 @@ class RichTraceHandler(BaseCallbackHandler):
         ))
 
     def on_tool_start(self, serialized, input_str, **kwargs):  # type: ignore[override]
-        """工具开始执行时触发"""
+        """准备开始调用工具了。"""
         name = (serialized or {}).get("name", "tool")
         
         import logging
@@ -140,7 +140,7 @@ class RichTraceHandler(BaseCallbackHandler):
         # 不再向控制台打印工具输入的原始数据，以保持终端整洁
 
     def on_tool_end(self, output, **kwargs):  # type: ignore[override]
-        """工具执行完成时触发"""
+        """工具干完活儿返回结果后，跑这里处理一下。"""
         import logging
         logger = logging.getLogger("central_agent")
         logger.info(f"on_tool_end 被调用，输出长度: {len(str(output))}")
@@ -157,7 +157,7 @@ class RichTraceHandler(BaseCallbackHandler):
         # 不再向控制台打印带有完整数据的观测结果，避免控制台刷屏
 
     def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
-        """Agent 完成推理时触发"""
+        """Agent 终于想明白答案了，推理结束。"""
         output = getattr(finish, "return_values", {}).get("output", "")
         
         # 推送到 SSE 调试流
@@ -190,7 +190,7 @@ class RichTraceHandler(BaseCallbackHandler):
 
 
 def _get_llm_config() -> Tuple[str, str, str]:
-    """Resolve LLM config from env or Settings."""
+    """去环境变量或者配置文件里把 AI 的账号密码翻出来。"""
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
     base_url = (
@@ -203,7 +203,7 @@ def _get_llm_config() -> Tuple[str, str, str]:
 
 
 def _build_llm(api_key: str, base_url: str, model: str) -> ChatOpenAI:
-    """Create a LangChain ChatOpenAI client with compatible args."""
+    """初始化一个 LangChain 版的聊天客户端。"""
     try:
         return ChatOpenAI(
             api_key=api_key,
@@ -223,7 +223,7 @@ def _build_llm(api_key: str, base_url: str, model: str) -> ChatOpenAI:
 
 
 def _run_async(coro) -> str:
-    """Run async tool handlers safely from sync agent context."""
+    """Agent 环境目前主要是同步的活儿，咱们得想个招儿在同步代码里把异步接口给跑通。"""
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -241,7 +241,7 @@ def _run_async(coro) -> str:
 
 
 def _build_lc_tools() -> list[LCTool]:
-    """Adapt internal tool registry to LangChain tools."""
+    """把咱系统里那套自定义工具，打包成 LangChain 能认出来的样子。"""
     from v1.logic.bot_tools import list_tools
 
     tools = []
@@ -261,7 +261,7 @@ def _build_lc_tools() -> list[LCTool]:
 
 
 def _split_messages(messages: List[dict]) -> tuple[str, list, str]:
-    """Split incoming messages into system prompt, chat history, and user input."""
+    """把这一坨消息拆开，看看哪些是人说的，哪些是 AI 以前回的，还有系统定的规矩。"""
     system_prompt = ""
     rest = messages or []
     if rest and rest[0].get("role") == "system":
@@ -286,7 +286,7 @@ def _split_messages(messages: List[dict]) -> tuple[str, list, str]:
 
 
 def _requires_tool(user_input: str) -> bool:
-    """Heuristic: queries that should hit tools (avoid hallucinated data)."""
+    """预判一下：如果是查库相关的关键词，说明用户想看实锤数据，必须让 Agent 动真格去调用工具。"""
     text = (user_input or "").strip().lower()
     if not text:
         return False
@@ -332,7 +332,7 @@ def _requires_tool(user_input: str) -> bool:
 
 
 def _extract_tool_error(observation: str) -> Optional[str]:
-    """Parse tool output for error field when it's JSON."""
+    """如果工具报了错（返回了带 error 字段的 JSON），咱得把它抓出来告诉用户。"""
     if not observation:
         return None
     try:
@@ -383,7 +383,7 @@ def _run_agent_once(
     force_tool: bool = False,
     client_id: str = "default",
 ) -> tuple[Optional[str], list[str], list[str]]:
-    """Run ReAct agent once and return output + intermediate steps + thoughts."""
+    """跑一遍 ReAct 流程，把最后的答案、中间用过的工具输出还有它的内心戏都拿回来。"""
     api_key, base_url, model = _get_llm_config()
     llm = _build_llm(api_key, base_url, model)
     tools = _build_lc_tools()
@@ -408,13 +408,13 @@ def _run_agent_once(
     agent_executor = AgentExecutor(
         agent=agent,
         tools=tools,
-        verbose=False,  # 关闭 LangChain 自带的冗长日志，使用 Rich 替代
-        handle_parsing_errors=True,
+        verbose= False,  # 关闭 LangChain 自带的冗长日志，使用 Rich 替代
+        handlers=callbacks,
         max_iterations=5,
         return_intermediate_steps=True,
         callbacks=callbacks,
     )
-    
+
     # 构建输入（包含历史对话和系统指令）
     input_text = f"{system_instruction}\n\n"
     if chat_history:
@@ -471,7 +471,7 @@ async def _push_error_event(error: str, client_id: str):
 
 
 def _call_agent(messages: List[dict], client_id: str = "default") -> Optional[str]:
-    """Use LangChain ReAct Agent with tool calling."""
+    """大招：开启带工具调用的 Agent 模式。"""
     if not HAS_LANGCHAIN:
         logger.warning("LangChain 未安装，智能体已禁用。")
         if HAS_RICH and console:
@@ -549,7 +549,7 @@ def _call_agent(messages: List[dict], client_id: str = "default") -> Optional[st
 
 
 def _call_llm(messages: List[dict]) -> Optional[str]:
-    """Fallback: direct OpenAI-compatible call without tools."""
+    """备选：如果 Agent 不给力或者没必要用工具，就让普通 LLM 直接回一下算了。"""
     if not HAS_OPENAI:
         logger.warning("OpenAI \u5ba2\u6237\u7aef\u4e0d\u53ef\u7528\uff0cLLM \u5df2\u7981\u7528\u3002")
         return None
@@ -578,7 +578,7 @@ def _fallback_reply() -> str:
 
 
 def generate_reply(messages: List[dict], client_id: str = "default") -> str:
-    """Main entry: try agent first, then fallback LLM."""
+    """对外暴露的总入口：先试 Agent，Agent 挂了或没回就让备选 LLM 顶上。"""
     agent_reply = _call_agent(messages, client_id=client_id)
     if agent_reply:
         return agent_reply
