@@ -16,6 +16,11 @@ const inputMessage = ref('');
 const isSending = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
+const pendingImage = ref<string | null>(null);
+
+const removePendingImage = () => {
+  pendingImage.value = null;
+};
 
 // 初始化欢迎语
 onMounted(() => {
@@ -38,9 +43,11 @@ const handleSendText = () => {
   handleSend();
 };
 
-const handleSend = async (imageB64?: string) => {
+const handleSend = async () => {
   const text = inputMessage.value.trim();
-  if (!text && !imageB64) return;
+  const imageToUpload = pendingImage.value;
+
+  if (!text && !imageToUpload) return;
   
   if (isSending.value) return;
 
@@ -51,11 +58,12 @@ const handleSend = async (imageB64?: string) => {
     id: newUserMsgId,
     role: 'user',
     content: text,
-    image: imageB64,
+    image: imageToUpload || undefined,
     timestamp: timeStr
   });
 
   inputMessage.value = '';
+  pendingImage.value = null;
   isSending.value = true;
   await scrollToBottom();
 
@@ -78,7 +86,7 @@ const handleSend = async (imageB64?: string) => {
       }));
       
     const recentMessages = apiMessages.slice(-10);
-    const urlsToSends = imageB64 ? [imageB64] : [];
+    const urlsToSends = imageToUpload ? [imageToUpload] : [];
 
     const response = await apiService.chatWithPigBot(recentMessages, urlsToSends);
     
@@ -117,10 +125,7 @@ const handleFileChange = (e: Event) => {
   const reader = new FileReader();
   reader.onload = (event) => {
     const base64String = event.target?.result as string;
-    if (!inputMessage.value.trim()) {
-      inputMessage.value = '请帮我化验一下这里的图片内容？';
-    }
-    handleSend(base64String);
+    pendingImage.value = base64String;
   };
   reader.readAsDataURL(file);
   
@@ -273,6 +278,19 @@ const handleFileChange = (e: Event) => {
               @change="handleFileChange"
             />
 
+            <!-- 图片预览悬浮层 -->
+            <div v-if="pendingImage" class="px-4 py-2 mt-2">
+              <div class="relative w-20 h-20 group/preview animate-in fade-in zoom-in duration-300">
+                <img :src="pendingImage" class="w-full h-full object-cover rounded-xl border-2 border-emerald-100 shadow-sm" alt="预加载图" />
+                <button 
+                  @click="removePendingImage"
+                  class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                >
+                  <span class="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              </div>
+            </div>
+
             <!-- 功能附加面板按钮 -->
             <div class="flex items-center gap-1.5 pt-2 pb-1 px-3">
               <button 
@@ -303,7 +321,7 @@ const handleFileChange = (e: Event) => {
               
               <button 
                 @click="handleSendText"
-                :disabled="(!inputMessage.trim() && !isSending) || isSending"
+                :disabled="(!inputMessage.trim() && !pendingImage && !isSending) || isSending"
                 class="h-[46px] w-[46px] shrink-0 bg-gradient-to-tr from-emerald-600 to-secondary rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none mb-0.5"
               >
                 <span v-if="!isSending" class="material-symbols-outlined text-[20px] ml-0.5">send</span>
@@ -333,5 +351,20 @@ const handleFileChange = (e: Event) => {
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:active {
   background-color: rgba(16, 185, 129, 0.4);
+}
+
+.animate-in {
+  animation: scaleIn 0.3s ease-out forwards;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 </style>
