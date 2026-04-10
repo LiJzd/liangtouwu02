@@ -33,7 +33,7 @@ import os
 import json
 import shutil
 from typing import Any
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_community.embeddings import DashScopeEmbeddings
 from v1.common.config import get_settings
 

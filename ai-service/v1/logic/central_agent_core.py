@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -29,17 +30,17 @@ try:
 except Exception:
     HAS_OPENAI = False
 
-try:
-    from langchain.agents import create_react_agent, AgentExecutor
-    from langchain_core.callbacks import BaseCallbackHandler
-    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-    from langchain_core.tools import Tool as LCTool
-    from langchain_core.prompts import PromptTemplate
-    from langchain_openai import ChatOpenAI
-    HAS_LANGCHAIN = True
-except Exception:
-    BaseCallbackHandler = object  # type: ignore[assignment]
-    HAS_LANGCHAIN = False
+from v1.common.langchain_compat import (
+    HAS_LANGCHAIN,
+    AgentExecutor,
+    BaseCallbackHandler,
+    create_react_agent,
+    AIMessage,
+    HumanMessage,
+    LCTool,
+    PromptTemplate,
+    ChatOpenAI
+)
 
 
 # Use unicode escapes to avoid Windows console encoding issues.
@@ -116,9 +117,9 @@ class RichTraceHandler(BaseCallbackHandler):
         
         content = Text()
         if thought:
-            content.append("💡 思考: ", style="bold green")
+            content.append("[Thought]: ", style="bold green")
             content.append(f"{thought}\n", style="white")
-        content.append("🤖 动作: ", style="bold cyan")
+        content.append("[Action]: ", style="bold cyan")
         content.append(f"{tool_name}\n", style="cyan")
         content.append("📝 参数: ", style="bold yellow")
         content.append(str(tool_input), style="yellow")
@@ -175,7 +176,7 @@ class RichTraceHandler(BaseCallbackHandler):
         
         console.print(Panel(
             Text(str(output), style="bold white"),
-            title="[bold green]✨ Final Answer[/]",
+            title="[bold green][Final Answer][/]",
             border_style="green",
             expand=False
         ))
@@ -404,12 +405,11 @@ def _run_agent_once(
     agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
     
     # 创建Agent Executor（带 Rich 追踪）
-    callbacks = [RichTraceHandler(client_id=client_id)] if HAS_RICH else []
+    callbacks = [RichTraceHandler(client_id=client_id)] if (HAS_RICH and HAS_LANGCHAIN) else []
     agent_executor = AgentExecutor(
         agent=agent,
         tools=tools,
-        verbose= False,  # 关闭 LangChain 自带的冗长日志，使用 Rich 替代
-        handlers=callbacks,
+        verbose=False,  # 关闭 LangChain 自带的冗长日志，使用 Rich 替代
         max_iterations=5,
         return_intermediate_steps=True,
         callbacks=callbacks,

@@ -1,9 +1,9 @@
+# -*- coding: utf-8 -*-
 """
-感知推理控制器 - 视觉 AI 的“大本营”
+视觉感知推理控制器。
 
-要是想让系统看懂图片或者视频里的猪，全靠这儿了。
-里头集成了 YOLO 检测算法，不管是传图片、传 Base64，还是直接看监控直播，
-这一层都能帮你搞定，顺便把识别结果清清楚楚地圈出来。
+本模块集成了基于 YOLO 架构的计算机视觉检测算法，负责处理图像识别、视频流分析及目标检测任务。
+支持多种输入源（URL、Base64、文件上传及实时视频流），并提供归一化的检测结果输出。
 """
 
 import os
@@ -58,9 +58,9 @@ _yolo_model = None
 _id_model = None  # ID识别模型
 _detection_model = None  # 检测模型（jiance）
 
-# YOLOv10 的兼容性补丁：
-# 厂商出的库版本经常变，内部类名也爱乱动。
-# 咱们这儿打几个补丁（Monkey Patching），不管外面怎么变，咱这儿都能稳稳地跑。
+# YOLOv10 兼容性补丁：
+# 针对不同版本 ultralytics 内部类名变更及结构调整进行的 Monkey Patching。
+# 确保在不同环境依赖下，模型推理逻辑与损失函数计算的一致性。
 try:
     import ultralytics.utils.loss
     from ultralytics.nn.modules import head
@@ -110,10 +110,10 @@ router = APIRouter()
 
 def get_yolo_model():
     """
-    把 YOLO 检测模型请出来。
+    初始化并获取 YOLO 检测模型单例。
     
-    它是懒加载的。第一次用的时候得去硬盘里搬权重、占显存，会稍微卡一下，
-    之后就都在内存里了，随叫随到，快得很。
+    模型采用懒加载模式。首次调用时将加载预训练权重并进行显存初始化，
+    后续调用将直接返回内存中的模型实例。
     """
     global _yolo_model
     if _yolo_model is None:
@@ -219,10 +219,12 @@ def load_image_from_base64(base64_str: str) -> np.ndarray:
 
 def parse_yolo_results(results, image_shape, confidence_threshold: float) -> List[DetectionObject]:
     """
-    把模型吐出来的一堆乱七八糟的数字翻译成咱们人能看懂的格式。
+    解析 YOLO 推理结果并进行结构化封装。
     
-    比如把像素坐标换成百分比（归一化），这样不管屏幕多大，圈儿都能画对地方。
-    顺便把那些“看着像又不太敢确定”的模糊结果（低于置信度阈值的）给剔除掉。
+    功能点：
+    1. 坐标归一化：将像素坐标转换为基于图像尺寸的百分比。
+    2. 置信度过滤：剔除低于指定置信度阈值的检测项。
+    3. 对象封装：将原始结果包装为 DetectionObject 数据传输对象。
     """
     detections = []
     
@@ -323,9 +325,7 @@ class Base64ImageRequest(BaseModel):
 @router.post("/detect/base64", response_model=PerceptionResponse, tags=["视觉感知"])
 async def detect_from_base64(request: Base64ImageRequest):
     """
-    接口 2：直接传一串 Base64 字符串过来。
-    
-    通常是前端网页刚拍的照片，或者是小程序里随手传的。
+    接口 2：处理 Base64 编码格式的图像检测请求。
     """
     start_time = time.time()
     
@@ -410,13 +410,13 @@ async def detect_from_upload(
 
 def generate_frames(video_path: str):
     """
-    这是视频处理的“加工间”。
+    实时视频流处理生成器。
     
-    它会盯着视频看：
-    1. 咔嚓一下截一张图（一帧）。
-    2. 看看这张图里有没有猪，都是啥状态。
-    3. 把看出来的结果画在图上。
-    4. 然后马不停蹄地传给前端，连起来就是带框的直播了。
+    处理流程：
+    1. 逐帧提取视频序列。
+    2. 执行 YOLO 模型推理以识别目标状态。
+    3. 在原始帧中绘制检测结果（边界框与标注）。
+    4. 将渲染后的帧数据流式推送到前端。
     """
     try:
         cv2.setLogLevel(0)
@@ -526,9 +526,9 @@ def generate_frames(video_path: str):
 @router.get("/stream/{filename}", tags=["视觉感知"])
 async def stream_video(filename: str):
     """
-    接口 4：视频直播间系统。
+    接口 4：MJPEG 视频流分发接口。
     
-    前端只要在 <img> 标签里填上这个地址，就能直接看到 AI 正在识别的现场画面。
+    前端可通过标准的 <img> 标签或流式媒体组件实时订阅检测后的画面。
     """
     from fastapi.responses import StreamingResponse
     import os

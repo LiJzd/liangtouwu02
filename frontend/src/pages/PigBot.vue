@@ -7,6 +7,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   image?: string; // base64
+  audio?: boolean; // 是否包含语音
   timestamp: string;
   isTyping?: boolean;
 }
@@ -17,9 +18,22 @@ const isSending = ref(false);
 const chatContainer = ref<HTMLElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const pendingImage = ref<string | null>(null);
+const isRecording = ref(false);
+const pendingAudioBlob = ref<Blob | null>(null);
+const audioPreviewUrl = ref<string | null>(null);
+let mediaRecorder: MediaRecorder | null = null;
+let audioChunks: Blob[] = [];
 
 const removePendingImage = () => {
   pendingImage.value = null;
+};
+
+const removePendingAudio = () => {
+  pendingAudioBlob.value = null;
+  if (audioPreviewUrl.value) {
+    URL.revokeObjectURL(audioPreviewUrl.value);
+    audioPreviewUrl.value = null;
+  }
 };
 
 // 初始化欢迎语
@@ -46,8 +60,9 @@ const handleSendText = () => {
 const handleSend = async () => {
   const text = inputMessage.value.trim();
   const imageToUpload = pendingImage.value;
+  const audioToUpload = pendingAudioBlob.value;
 
-  if (!text && !imageToUpload) return;
+  if (!text && !imageToUpload && !audioToUpload) return;
   
   if (isSending.value) return;
 
@@ -57,13 +72,15 @@ const handleSend = async () => {
   messages.value.push({
     id: newUserMsgId,
     role: 'user',
-    content: text,
+    content: text || (audioToUpload ? '[语音消息]' : ''),
     image: imageToUpload || undefined,
+    audio: !!audioToUpload,
     timestamp: timeStr
   });
 
   inputMessage.value = '';
   pendingImage.value = null;
+  removePendingAudio();
   isSending.value = true;
   await scrollToBottom();
 
@@ -88,7 +105,7 @@ const handleSend = async () => {
     const recentMessages = apiMessages.slice(-10);
     const urlsToSends = imageToUpload ? [imageToUpload] : [];
 
-    const response = await apiService.chatWithPigBot(recentMessages, urlsToSends);
+    const response = await apiService.chatWithPigBot(recentMessages, urlsToSends, audioToUpload);
     
     messages.value = messages.value.filter(m => m.id !== typingMsgId);
     
@@ -129,8 +146,52 @@ const handleFileChange = (e: Event) => {
   };
   reader.readAsDataURL(file);
   
+  
   if (fileInput.value) fileInput.value.value = '';
 };
+
+const handleMicClick = () => {
+  if (isRecording.value) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+};
+
+const startRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = (event) => {
+      audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      pendingAudioBlob.value = audioBlob;
+      audioPreviewUrl.value = URL.createObjectURL(audioBlob);
+      // 关闭所有轨道以释放麦克风
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.start();
+    isRecording.value = true;
+  } catch (err) {
+    console.error('麦克风权限开启失败:', err);
+    alert('需开启麦克风权限才能使用语音功能');
+  }
+};
+
+const stopRecording = () => {
+  if (mediaRecorder && isRecording.value) {
+    mediaRecorder.stop();
+    isRecording.value = false;
+  }
+};
+
+// transcribeVoice 已弃用，逻辑已迁移至多模态后端
 </script>
 
 <template>
@@ -249,7 +310,13 @@ const handleFileChange = (e: Event) => {
                       : 'bg-white text-emerald-950 rounded-[18px] rounded-tl-[4px] shadow-sm border-emerald-100/80',
                   ]"
                 >
-                  <div v-if="!msg.isTyping" class="whitespace-pre-wrap break-words break-all">{{ msg.content }}</div>
+                  <div v-if="!msg.isTyping" class="whitespace-pre-wrap break-words break-all text-sm">
+                    <div v-if="msg.audio" class="flex items-center gap-2 mb-1 text-emerald-100">
+                      <span class="material-symbols-outlined text-sm animate-pulse">settings_voice</span>
+                      <span class="text-[11px] font-bold italic tracking-wide">MULTIMODAL AUDIO ATTACHED</span>
+                    </div>
+                    {{ msg.content }}
+                  </div>
                   
                   <!-- 发送的图像渲染缩略图 -->
                   <div v-if="msg.image" class="mt-2 rounded-xl border border-black/10 overflow-hidden bg-emerald-50 shadow-inner max-w-[200px]">
@@ -278,12 +345,25 @@ const handleFileChange = (e: Event) => {
               @change="handleFileChange"
             />
 
-            <!-- 图片预览悬浮层 -->
-            <div v-if="pendingImage" class="px-4 py-2 mt-2">
-              <div class="relative w-20 h-20 group/preview animate-in fade-in zoom-in duration-300">
+            <!-- 资源预检悬浮层 -->
+            <div v-if="pendingImage || audioPreviewUrl" class="px-4 py-2 mt-2 flex gap-3">
+              <!-- 图片预览 -->
+              <div v-if="pendingImage" class="relative w-20 h-20 group/preview animate-in fade-in zoom-in duration-300">
                 <img :src="pendingImage" class="w-full h-full object-cover rounded-xl border-2 border-emerald-100 shadow-sm" alt="预加载图" />
                 <button 
                   @click="removePendingImage"
+                  class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                >
+                  <span class="material-symbols-outlined text-[14px]">close</span>
+                </button>
+              </div>
+
+              <!-- 语音预览 -->
+              <div v-if="audioPreviewUrl" class="relative w-24 h-20 bg-emerald-50 rounded-xl border-2 border-emerald-100 shadow-sm flex flex-col items-center justify-center gap-1 animate-in fade-in zoom-in duration-300">
+                <span class="material-symbols-outlined text-secondary animate-pulse text-[24px]">mic</span>
+                <span class="text-[9px] font-bold text-emerald-900/40 uppercase tracking-widest">Voice attached</span>
+                <button 
+                  @click="removePendingAudio"
                   class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
                 >
                   <span class="material-symbols-outlined text-[14px]">close</span>
@@ -299,8 +379,16 @@ const handleFileChange = (e: Event) => {
               >
                 <span class="material-symbols-outlined text-[18px]">add_photo_alternate</span>
               </button>
-              <button class="p-2 rounded-full text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-emerald-100">
-                <span class="material-symbols-outlined text-[18px]">mic_none</span>
+              <button 
+                @click="handleMicClick"
+                class="p-2 rounded-full transition-all cursor-pointer flex items-center justify-center border border-transparent"
+                :class="[
+                  isRecording 
+                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 animate-pulse border-red-200' 
+                    : 'text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 hover:border-emerald-100'
+                ]"
+              >
+                <span class="material-symbols-outlined text-[18px]">{{ isRecording ? 'mic' : 'mic_none' }}</span>
               </button>
               <button class="p-2 rounded-full text-emerald-900/50 hover:text-secondary hover:bg-emerald-50 transition-colors cursor-pointer flex items-center justify-center border border-transparent hover:border-emerald-100">
                 <span class="material-symbols-outlined text-[18px]">add_circle</span>
@@ -313,7 +401,7 @@ const handleFileChange = (e: Event) => {
               <div class="flex-1 bg-surface-bright rounded-2xl border border-emerald-100 focus-within:bg-white focus-within:border-secondary focus-within:ring-2 focus-within:ring-secondary/20 transition-all flex pt-1 px-3 shadow-inner">
                 <textarea
                   v-model="inputMessage"
-                  placeholder="向 AI 发送指令..."
+                  :placeholder="isRecording ? '正在倾听...' : audioPreviewUrl ? '已包含语音，点击发送或继续输入' : '向 AI 发送指令...'"
                   class="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus:border-transparent resize-none py-2 text-[13px] font-inter text-emerald-950 placeholder:text-emerald-900/30 h-[48px] max-h-[120px]"
                   @keydown.enter.prevent="handleSendText"
                 ></textarea>
@@ -321,7 +409,7 @@ const handleFileChange = (e: Event) => {
               
               <button 
                 @click="handleSendText"
-                :disabled="(!inputMessage.trim() && !pendingImage && !isSending) || isSending"
+                :disabled="(!inputMessage.trim() && !pendingImage && !pendingAudioBlob && !isSending) || isSending"
                 class="h-[46px] w-[46px] shrink-0 bg-gradient-to-tr from-emerald-600 to-secondary rounded-full flex items-center justify-center text-white shadow-lg shadow-emerald-600/30 active:scale-95 transition-all disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none mb-0.5"
               >
                 <span v-if="!isSending" class="material-symbols-outlined text-[20px] ml-0.5">send</span>

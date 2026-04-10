@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -12,8 +13,8 @@ _service = AgentSimulationService()
 @router.post("/simulations/ingest", response_model=SimulationIngestResponse)
 async def ingest_simulation(payload: SimulatedAlertEvent) -> SimulationIngestResponse:
     """
-    模拟告警的“收件箱”。
+    接收并处理仿真告警事件的接入点。
     
-    收到模拟的异常事件（比如猪发烧了）后，直接丢给后台模拟服务去深度分析。
+    接收模拟的异常事件数据，并调用仿真服务进行深度异常检测与分析。
     """
     return await _service.ingest(payload)

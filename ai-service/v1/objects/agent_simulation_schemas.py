@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -7,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class SimulationThresholds(BaseModel):
     """
-    模拟告警的“红线”。
-    猪的体温、活跃度，还有猪棚里的温湿度。要是超了这些个数，系统就该“警铃大作”了。
+    仿真异常检测阈值配置。
+    包含体温、活跃度、环境温湿度及氨气浓度等告警红线。
     """
     model_config = ConfigDict(populate_by_name=True)
 
@@ -25,9 +26,8 @@ class SimulationThresholds(BaseModel):
 
 class SimulatedAlertEvent(BaseModel):
     """
-    模拟出来的“突发状况”。
-    
-    不管是某只猪身体不舒服，还是环境数据不对劲，都在这个包里装着。
+    异常仿真事件协议。
+    描述猪只健康度变化或环境异常触发的仿真告警包。
     """
     model_config = ConfigDict(populate_by_name=True)
 
@@ -49,6 +49,9 @@ class SimulatedAlertEvent(BaseModel):
 
 
 class SimulationIngestResponse(BaseModel):
+    """
+    仿真数据注入响应协议。
+    """
     accepted: bool = True
     abnormal: bool
     deduplicated: bool = False

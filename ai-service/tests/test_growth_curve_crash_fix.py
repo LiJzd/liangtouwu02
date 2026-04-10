@@ -39,7 +39,7 @@ def valid_pig_report_data(draw):
     trigger the datetime.now() call at line 433.
     """
     pig_id = draw(st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=('Lu', 'Ll', 'Nd'))))
-    breed = draw(st.sampled_from(["金华两头乌", "杜洛克", "长白猪", "大白猪"]))
+    breed = draw(st.sampled_from(["两头乌", "杜洛克", "长白猪", "大白猪"]))
     current_day_age = draw(st.integers(min_value=30, max_value=300))
     current_weight = draw(st.floats(min_value=10.0, max_value=150.0, allow_nan=False, allow_infinity=False))
     
@@ -174,7 +174,7 @@ def test_build_dual_track_report_concrete_case():
     """
     # Minimal valid input
     pig_id = "TEST001"
-    breed = "金华两头乌"
+    breed = "两头乌"
     current_day_age = 90
     current_weight = 35.5
     predicted_curve = [

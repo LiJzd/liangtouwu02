@@ -1,5 +1,4 @@
-<script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+<script setup lang="ts">import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import * as echarts from 'echarts';
 
 const stats = ref({
@@ -194,7 +193,7 @@ function initMultiGasChart(el: HTMLElement) {
         <!-- Video System -->
         <div class="lg:col-span-2 bg-white rounded-xl border border-emerald-200 overflow-hidden shadow-sm group h-[360px]">
           <div class="relative h-full w-full">
-            <video autoplay loop muted playsinline class="w-full h-full object-cover grayscale brightness-90 group-hover:brightness-100 transition-all duration-700" src="/保育-西南角_20250409000000-20250411000000_15.mp4"></video>
+            <video autoplay loop muted playsinline class="w-full h-full object-cover grayscale brightness-90 group-hover:brightness-100 transition-all duration-700" src="/nursery_sw_15.mp4"></video>
             <div class="absolute inset-0 bg-emerald-900/15 mix-blend-multiply pointer-events-none"></div>
             <div class="absolute inset-0 p-6 flex flex-col justify-between">
               <div class="flex justify-between items-start">

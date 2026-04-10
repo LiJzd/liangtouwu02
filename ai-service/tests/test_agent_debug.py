@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试 Agent 调试功能
 验证 Rich 控制台追踪和 SSE 调试流

@@ -142,7 +142,7 @@ function generateMockBriefingContent(date: string, dayOffset: number): string {
 - 中等活跃度: ${Math.floor(totalPigs * 0.25)} 头 (${(25 + Math.random() * 5).toFixed(1)}%)
 - 低活跃度: ${Math.floor(totalPigs * 0.05)} 头 (${(5 + Math.random() * 3).toFixed(1)}%)
 
-${abnormalCount > 0 ? `> **重点关注**: 猪舍B区的韦俊其、猪舍A区的李明等个体活跃度偏低，建议加强观察。` : ''}
+${abnormalCount > 0 ? `> **重点关注**: 猪舍B区的异常个体 PIG-B01、猪舍A区的异常个体 PIG-A03 等个体活跃度偏低，建议加强观察。` : ''}
 
 ## 🌡️ 环境监测
 
@@ -180,8 +180,8 @@ ${parseFloat(ammonia) > 12 ? `> **环境提醒**: 氨气浓度略高，建议加
 ${abnormalCount > 0 ? `
 今日系统检测到 **${abnormalCount}** 个异常事件：
 
-1. **体温异常** - 猪舍B区韦俊其，体温39.8°C，已通知兽医
-2. **活跃度低** - 猪舍A区李明，活跃度指数32，建议观察
+1. **体温异常** - 猪舍B区 PIG-B01，体温39.8°C，已通知兽医
+2. **活跃度低** - 猪舍A区 PIG-A03，活跃度指数32，建议观察
 ${abnormalCount > 2 ? '3. **采食减少** - 猪舍C区部分猪只采食量下降15%' : ''}
 
 > 所有异常已自动记录并触发语音播报，相关人员已收到通知。
@@ -213,7 +213,7 @@ const mockResponse = <T>(data: T): ApiResponse<T> => ({
 const getMockPig = (pigId: string) =>
     MOCK_PIGS_LIST.find((pig) => pig.pigId === pigId) || {
         pigId,
-        breed: '金华两头乌',
+        breed: '两头乌',
         area: '猪舍A',
         current_weight_kg: 45,
         current_month: 4
@@ -275,14 +275,14 @@ const buildMockPigInspectionReport = (pigId: string) => {
         ? Math.round(lifecycle.reduce((s, d) => s + d.water_duration_mins, 0) / lifecycle.length)
         : 0;
 
-    // 历史实测数据表格（含喂食/饮水6列）
+    // 历史实测数据表格（3列）
     const historicalTable = [
         '### 历史实测数据 (Historical)',
         '',
-        '| 月份 | 实测体重(kg) | 喂食次数 | 喂食时长(min) | 饮水次数 | 饮水时长(min) |',
-        '| --- | --- | --- | --- | --- | --- |',
+        '| 月份 | 实测体重(kg) | 状态 |',
+        '| --- | --- | --- |',
         ...lifecycle.map(d =>
-            `| ${d.month} | ${d.weight_kg} | ${d.feed_count} | ${d.feed_duration_mins} | ${d.water_count} | ${d.water_duration_mins} |`
+            `| ${d.month} | ${d.weight_kg} | 已记录 |`
         )
     ].join('\n');
 
@@ -314,7 +314,6 @@ const buildMockPigInspectionReport = (pigId: string) => {
 - **预测净增重**：${gain} kg
 - **预测结束月龄**：${lastPoint.month} 月
 - **目标状态**：${lastPoint.status}
-- 历史采食记录显示，平均每月喂食约 **${avgFeedCount}** 次，饮水时长约 **${avgWaterDuration}** 分钟，整体采食状况良好。
 
 ${historicalTable}
 
@@ -322,9 +321,9 @@ ${predictionTable}
 
 ## AI 建议
 
-1. 保持当前饲喂节奏（每月约 ${avgFeedCount} 次），避免在快速增重阶段频繁换料。
+1. 保持稳定的管理节奏，避免在快速增重阶段频繁环境变动。
 2. 每周复核一次体重，与曲线偏差超过 5kg 时重新评估饲喂方案。
-3. 持续关注饮水时长变化，若饮水量低于均值（${avgWaterDuration} min/月）超过10%，建议检查饮水设施和健康状态。
+3. 持续关注生猪精神状态，确保猪舍环境舒适。
 
 *报告生成时间：${new Date().toLocaleString('zh-CN')}*`,
         timestamp: new Date().toISOString()
@@ -408,7 +407,8 @@ export const apiService = {
         }
 
         await delay(500);
-        let filtered = [...MOCK_ALERTS];
+        // 同步后端的过滤规则：过滤所有以“模拟告警”开头的记录
+        let filtered = [...MOCK_ALERTS].filter(a => !a.message?.startsWith('模拟告警'));
 
         // 模拟后端的搜索与过滤逻辑
         if (filters.search) {
@@ -425,6 +425,48 @@ export const apiService = {
         }
 
         return mockResponse(filtered);
+    },
+
+    /** 预警中心：删除预警记录 */
+    deleteAlert: async (id: number | string) => {
+        if (USE_REAL_API) {
+            const res = await http.delete(`/alerts/${id}`);
+            return res.data;
+        }
+
+        await delay(400);
+        const index = MOCK_ALERTS.findIndex(a => String(a.id) === String(id));
+        if (index !== -1) {
+            MOCK_ALERTS.splice(index, 1);
+        }
+        return mockResponse(null);
+    },
+
+    /** 预警中心：批量删除预警记录 */
+    deleteAlertsBatch: async (ids: (number | string)[]) => {
+        if (USE_REAL_API) {
+            const res = await http.delete('/alerts/batch', { data: ids });
+            return res.data;
+        }
+
+        await delay(600);
+        ids.forEach(id => {
+            const index = MOCK_ALERTS.findIndex(a => String(a.id) === String(id));
+            if (index !== -1) MOCK_ALERTS.splice(index, 1);
+        });
+        return mockResponse(null);
+    },
+
+    /** 预警中心：清空所有预警记录 */
+    clearAllAlerts: async () => {
+        if (USE_REAL_API) {
+            const res = await http.delete('/alerts/all');
+            return res.data;
+        }
+
+        await delay(800);
+        MOCK_ALERTS.length = 0;
+        return mockResponse(null);
     },
 
     // 获取所有生猪列表
@@ -664,15 +706,37 @@ export const apiService = {
     },
 
     /**
-     * AI 多智能体聊天接口（对接 Python AI 端点的 V2 接口）
-     * 实际调用 8000 端口，用于多模态交互
+     * AI 多智能体聊天接口（针对多模态升级）
+     * 支持发送文本、多张图片以及原生音频流。
      */
     chatWithPigBot: async (
         messages: { role: string; content: any }[],
-        imageUrls: string[] = []
+        imageUrls: string[] = [],
+        audioBlob: Blob | null = null
     ) => {
-        // AI 后端默认端口是 8000，直接调用完整路径
         const baseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '';
+        
+        // 如果有音频，使用 FormData 以支持多文件上传
+        if (audioBlob) {
+            const formData = new FormData();
+            formData.append('user_id', 'demo_user');
+            formData.append('messages', JSON.stringify(messages));
+            formData.append('image_urls', JSON.stringify(imageUrls));
+            formData.append('audio', audioBlob, 'voice.webm');
+            
+            const res = await fetch(`${baseUrl}/api/v1/agent/chat/v2`, {
+                method: 'POST',
+                body: formData,
+            });
+            
+            if (!res.ok) {
+                const errBody = await res.text();
+                throw new Error(`Agent Chat (Multimodal) Failed: ${res.status} - ${errBody}`);
+            }
+            return await res.json();
+        }
+
+        // 兼容原有的 JSON 请求方式（纯文本或带 URL 图片）
         const res = await fetch(`${baseUrl}/api/v1/agent/chat/v2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -687,6 +751,25 @@ export const apiService = {
         if (!res.ok) {
             const errBody = await res.text();
             throw new Error(`Agent Chat Failed: ${res.status} - ${errBody}`);
+        }
+        return await res.json();
+    },
+
+    /** 语音转文字接口 */
+    transcribeAudio: async (audioBlob: Blob): Promise<{ text: string; code: number; message: string }> => {
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'voice.webm');
+
+        // AI 后端默认端口是 8000
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '';
+        const res = await fetch(`${baseUrl}/api/v1/bot/asr`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const errBody = await res.text();
+            throw new Error(`ASR Failed: ${res.status} - ${errBody}`);
         }
         return await res.json();
     },

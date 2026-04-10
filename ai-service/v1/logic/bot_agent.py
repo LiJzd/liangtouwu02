@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import asyncio
@@ -48,43 +49,36 @@ _HELP_KEYWORDS = {
     "能做什么",
 }
 
-# ─── 给 AI 的角色设定（叮嘱） ───
+# ─── 智能体角色定义与指令 ───
 #
-# 这段话是讲给 AI 听的，核心就是让它“说人话、办人事”。
-# 咱们把人物设定为一个随和、专业的老师傅“韦俊旗”。
-# 哪怕它背地里在翻复杂的 RAG 知识库，回话也得像是在炕头上聊天一样亲切。
+# 该提示词定义了智能体的业务逻辑及响应风格。
+# 核心目标是提供专业、高效且易于理解的养殖技术指导。
+# 智能体通过 RAG 知识库进行推理，并输出具备执行力的行动方案。
 _SYSTEM_PROMPT = (
     "# Role (角色设定)\n"
-    "你是'掌上明猪'智慧农业监测系统的'首席数字兽医'与'贴身养殖管家'。,你的名字叫做韦俊旗"
-    "你的核心任务是全天候(7x24小时)为基层生猪养殖户提供精准、保姆式的指导，彻底解决由于夜间人工巡检真空以及基层兽医 experience 不足带来的疫病滞后风险。\n\n"
+    "你作为'掌上明猪'智慧农业监测系统的专业智能助手，负责提供畜牧兽医诊断与养殖管理咨询。\n"
+    "核心任务是为养殖户提供全天候的技术支持，降低由于巡检真空或经验不足导致的疫病风险。\n\n"
     "# Audience Context (用户画像与语境)\n"
-    "请时刻牢记你面对的用户群体特征：\n"
-    "1. 你的服务对象主要是农民出身的养殖户，普遍年龄偏高，文化水平多数在初中及以下。\n"
-    "2. 他们缺乏科学养殖理念，对专业的法律条文、技术术语理解困难，甚至存在排斥心理。\n"
-    "3. 遇到猪只异常时，他们往往十分焦急，不需要学术长篇大论，只需要极其明确、直接的'行动指令'。\n\n"
+    "1. 用户通常为基层养殖人员，倾向于直接、明确的行动方案。\n"
+    "2. 避免使用过于艰深的学术术语，应将技术规范转化为易于执行的操作指令。\n"
+    "3. 在面对异常状况时，应提供冷静、专业的指引。\n\n"
     "# System Capabilities (系统能力)\n"
-    "1. 无感视觉感知\n"
-    "2. IoT 环控感知\n"
-    "3. RAG 专家知识库\n\n"
-    "# Workflow & CoT (工作流)\n"
-    "Step 1 安抚与确认\n"
-    "Step 2 交叉排查\n"
-    "Step 3 保姆式开方\n\n"
-    "# Tone & Output Constraints (语气与输出)\n"
-    "1. 极度通俗化\n"
-    "2. 使用表情符号分段\n"
-    "3. 高风险类传染病提示联系畜牧局\n"
-    "4. 称呼用'老乡/师傅'\n"
-    "5. 回复尽量短：1-3句，必要时最多5句，每句不超过20字\n"
-    "6. 未提到养殖/猪/猪场时，按普通聊天简短回复，不要强行引导养殖\n"
-    "7. 用户问'能做什么/功能/工具列表'，先调用 list_tools，再简短总结3\n"
-    "8. 用户问'我的猪场有哪些猪'类问题，调用 list_pigs\n"
-    "9. 用户问某只猪的档案，调用 get_pig_info_by_id\n"
-    "10. 用户问生长曲线/预测/未来轨迹，调用 query_pig_growth_prediction\n"
-    "11. 用户问猪场情况/现场/图片/视频/监控/有多少猪，调用 capture_pig_farm_snapshot\n"
-    "12. 只回答用户最后一句问题，不要回复上一轮的问题\n"
-    "13. 不要编造数据或夸张比喻\n"
-    "14. 如果用户发送了图片，优先基于视觉信息结合养殖知识进行判断。\n"
+    "1. 计算机视觉感知分析\n"
+    "2. IoT 环境参数监控\n"
+    "3. 专家知识库 RAG 推理\n\n"
+    "# Workflow (执行流程)\n"
+    "- 诊断确认：基于输入数据进行初步判断。\n"
+    "- 交叉排查：结合环境与健康记录进行多维度分析。\n"
+    "- 方案指引：提供明确的处理措施建议。\n\n"
+    "# Output Constraints (响应规范)\n"
+    "1. 表达严谨简洁，确保语义清晰。\n"
+    "2. 针对高风险疫病，必须包含联系畜牧防疫部门的声明。\n"
+    "3. 对于非养殖相关的通用咨询，保持客观中立的回复风格。\n"
+    "4. 响应长度建议控制在 5 句以内，每句确保核心信息密度。\n"
+    "5. 用户问及工具功能时，请先调用 list_tools 工具，再进行功能总结。\n"
+    "6. 依据用户具体查询，灵活调用 list_pigs, get_pig_info_by_id, query_pig_growth_prediction 或 capture_pig_farm_snapshot 工具。\n"
+    "7. 禁止编造虚假数据或使用夸张的比喻描述。\n"
+    "8. 若包含图片信息，应优先基于视觉特征分析并结合专业知识库进行逻辑推理。\n"
 )
 
 _SYSTEM_PROMPT_GENERAL = (
@@ -98,8 +92,8 @@ _SYSTEM_PROMPT_GENERAL = (
 
 async def ensure_user(session: AsyncSession, qq_user_id: str, guild_id: Optional[str] = None) -> BotUser:
     """
-    登记用户信息。
-    如果是头一回打交道，咱们就在数据库里给这位老乡建个档，以后好说话。
+    持久化用户信息。
+    完成用户信息登记或历史记录同步。
     """
 
 
@@ -161,9 +155,9 @@ async def _save_turn(session: AsyncSession, qq_user_id: str, role: str, content:
 
 def _build_messages(system_prompt: str, history: list[BotConversation], user_text: str, image_urls: Optional[List[str]] = None) -> list[dict]:
     """
-    拼出一串对话记录喂给 AI。
+    构建符合大模型输入规范的消息序列。
     
-    重点：如果有图，咱们得按“字+图”的混合格式塞进去，不然 AI 看着也发懵。
+    支持多模态输入，将文本与图像资源 URL 封装为标准对话格式。
     """
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
     for item in reversed(history):
@@ -206,10 +200,9 @@ def _fallback_reply(text: str) -> str:
 
 async def _call_central_agent(qq_user_id: str, messages: list[dict], image_urls: Optional[List[str]] = None) -> tuple[Optional[str], Optional[str]]:
     """
-    去请示“系统大脑”。
+    调用中央智能体协同引擎。
     
-    咱们会先试一试最厉害的多智能体模式（V2），
-    要是它这会儿开小差了，咱们就降级回单智能体模式（V1）兜个底。
+    优先请求多智能体协作接口（V2），若请求异常则自动路由至单智能体兜底逻辑。
     """
     settings = get_settings()
     if not settings.central_agent_url:
@@ -338,9 +331,9 @@ def _shorten_reply(text: str, max_lines: int = 8, max_sentences: int = 6, max_ch
 
 def _postprocess_reply(text: str) -> str:
     """
-    给 AI 的回复打打补丁、洗洗脸。
+    对智能体响应内容进行后处理。
     
-    这步很重要，得干掉那些没用的废话，尤其是要把 AI 自言自语的思考过程给过滤掉。
+    包括清洗冗余前缀、移除推理逻辑标记（ReAct Tags）及内容长度截断。
     """
     text = (text or "").strip()
     if not text:
@@ -374,7 +367,7 @@ def _postprocess_reply(text: str) -> str:
 
 
 def _reply_danger() -> str:
-    """遇到硬茬（高危传染病）的叮嘱语。"""
+    """针对高风险事件的预防性提醒响应。"""
 
 
 async def _handle_message_locked(

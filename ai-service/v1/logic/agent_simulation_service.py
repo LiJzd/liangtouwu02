@@ -1,8 +1,9 @@
+# -*- coding: utf-8 -*-
 """
-代理模拟服务 - 系统的“演习场”
+仿真服务模块。
 
-专门用来模拟各种突发异常（比如猪发烧、或者猪舍氨气重），
-看看 AI 老师傅能不能及时发现，并利索地把告警发到大屏上去。
+负责模拟各类生产异常情况（如生理指标异常或环境监控超标），
+验证智能体系统的异常检测能力及告警发布流程。
 """
 from __future__ import annotations
 
@@ -49,14 +50,14 @@ class AgentSimulationService:
 
     async def ingest(self, event: SimulatedAlertEvent) -> SimulationIngestResponse:
         """
-        这里是处理模拟告警的“加工流水线”。
+        处理仿真告警事件的核心流水线。
         
-        流程基本是：
-        1. 规整：把传进来的数据弄干净。
-        2. 初审：看看有没有指标超标了（阈值检查）。
-        3. 查重：要是刚才报过同样的，就直接拿缓存（不浪费 AI 算力）。
-        4. 研判：要是新鲜事儿，就请 AI 大脑拿个主意。
-        5. 补录：万一 AI 忘了发公告，咱还得在这儿给它补上。
+        执行流程：
+        1. 数据归一化：标准化输入事件格式。
+        2. 异常评估：基于预设阈值检查生理及环境指标。
+        3. 缓存检测：实现重复事件去重，优化处理效率。
+        4. 智能体研判：分发任务至智能体进行深度决策。
+        5. 兜底发布：针对未自动触发的告警执行强制发布逻辑。
         """
         thresholds = event.thresholds or SimulationThresholds()
         normalized = self._normalize_event(event)
@@ -160,10 +161,10 @@ class AgentSimulationService:
 
     def _evaluate_findings(self, event: dict[str, Any], thresholds: SimulationThresholds) -> list[str]:
         """
-        规则审核官。
+        基于业务规则评估异常发现。
         
-        挨个对对看：猪发烧了没？是不是活力不够？环境氨气超没超？
-        只要发现一项异常，就记到小本本（findings）上。
+        对比生理指标（体温、活跃度、健康评分）及环境参数（温湿度、氨气浓度），
+        记录所有触发阈值的异常项。
         """
         findings: list[str] = []
 
@@ -235,9 +236,9 @@ class AgentSimulationService:
         duplicate_window_seconds: int,
     ) -> Optional[CacheEntry]:
         """
-        档案查重。
+        事件去重逻辑。
         
-        看看是不是短时间内报了两次同样的警。要是还在“冷静期”内，咱就直接翻旧账。
+        在指定的时间窗口内，若已处理过指纹一致的相同事件，则直接反馈缓存结果。
         """
         with _CACHE_LOCK:
             entry = _CACHE.get(cache_key)
@@ -268,9 +269,9 @@ class AgentSimulationService:
 
     def _build_agent_prompt(self, event: dict[str, Any], findings: list[str]) -> str:
         """
-        给 AI 的“报案说明”。
+        构建智能体引导提示词。
         
-        把咱们发现的问题清清楚楚地告诉 AI，并提醒它一定要发布通告。
+        封装异常判定依据及事件详情，明确要求智能体执行告警发布任务。
         """
         alert_type = self._derive_alert_type(event, findings)
         risk = self._derive_risk(event, findings)

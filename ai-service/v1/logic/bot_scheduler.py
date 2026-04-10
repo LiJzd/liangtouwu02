@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """
-这个文件管着后台的“定时提醒”功能。
-比如哪个老乡订阅了每日简报，咱们就得定时去数据库里翻翻，看该给谁发报送了。
+智能助手任务调度模块。
+负责处理周期性订阅任务，检查并下发每日简报等定时通知。
 """
 
 from __future__ import annotations
@@ -19,12 +20,12 @@ from v1.objects.bot_models import BotSubscription
 
 async def process_due_subscriptions() -> int:
     """
-    看看现在有谁该收简报了。
+    处理已到期的订阅汇报任务。
     
-    流程大概是：
-    1. 查日子：根据配置的时区，看看现在是几点。
-    2. 搜名单：去数据库里把所有订阅用户都拎出来。
-    3. 挨个发：谁到点儿了，就给谁出一份简报，塞进发信队列里。
+    执行逻辑：
+    1. 时间检查：依据配置时区获取当前系统时间。
+    2. 订阅检索：从数据库加载所有活跃的订阅配置。
+    3. 任务分发：筛选到期任务，生成简报并载入待发队列。
     """
     settings = get_settings()
     tz = ZoneInfo(settings.bot_timezone)
@@ -52,7 +53,7 @@ async def process_due_subscriptions() -> int:
 
 async def scheduler_loop(stop_event: asyncio.Event) -> None:
     """
-    这是个永不停歇的小钟表，每隔一段时间就去检查一下有没有该发的订阅。
+    调度器主循环，周期性触发订阅检查任务。
     """
     settings = get_settings()
     interval = max(10, int(settings.bot_scheduler_interval_seconds))

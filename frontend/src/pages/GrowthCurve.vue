@@ -18,10 +18,6 @@ interface PigInfo {
 interface HistoricalPoint {
   month: number;
   weight: number;        // 实测体重
-  feedCount: number;     // 喂食次数
-  feedDuration: number;  // 喂食时长(min)
-  waterCount: number;    // 饮水次数
-  waterDuration: number; // 饮水时长(min)
 }
 
 // 预测点数据
@@ -45,16 +41,18 @@ const reportError = ref('');
 
 // ECharts 实例及引用
 const growthChartRef = ref<HTMLElement | null>(null);
-const feedChartRef = ref<HTMLElement | null>(null);
-const waterChartRef = ref<HTMLElement | null>(null);
 const gainChartRef = ref<HTMLElement | null>(null);
 let growthChart: echarts.ECharts | null = null;
-let feedChart: echarts.ECharts | null = null;
-let waterChart: echarts.ECharts | null = null;
 let gainChart: echarts.ECharts | null = null;
 
 // 当前激活的图表Tab
-const activeTab = ref<'growth' | 'feed' | 'water' | 'gain'>('growth');
+const activeTab = ref<'growth' | 'gain'>('growth');
+
+// Tab 导航配置
+const TABS = [
+  { key: 'growth', label: '生长曲线', icon: 'monitoring', activeColor: 'bg-emerald-950 text-white shadow-md' },
+  { key: 'gain', label: '日增重', icon: 'bolt', activeColor: 'bg-secondary text-white shadow-md' },
+] as const;
 
 const isCurrentPig = (pigId: string) => selectedPig.value?.pigId === pigId;
 
@@ -70,12 +68,13 @@ const parseHistoricalPoints = (markdown: string): HistoricalPoint[] => {
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
-    if (line.includes('历史实测数据') && line.includes('Historical')) {
+    // 增强匹配：支持纯中文或包含 Historical 关键字
+    if (line.includes('历史实测数据') || (line.toLowerCase().includes('historical') && line.includes('数据'))) {
       inHistoricalSection = true;
       continue;
     }
     // 防止越界进入预测区块
-    if (inHistoricalSection && line.includes('预测生长曲线数据') && line.includes('Monthly')) {
+    if (inHistoricalSection && (line.includes('预测生长曲线') || line.toLowerCase().includes('monthly'))) {
       break;
     }
 
@@ -89,6 +88,7 @@ const parseHistoricalPoints = (markdown: string): HistoricalPoint[] => {
 
     if (cells.length < 2) continue;
 
+    // 提取数字，支持 "1月龄" "第3个月" 等格式
     const month = Number(cells[0].replace(/[^\d]/g, ''));
     const weight = Number(cells[1].replace(/[^\d.]/g, ''));
     if (!Number.isFinite(month) || month <= 0 || !Number.isFinite(weight) || weight <= 0) continue;
@@ -96,10 +96,6 @@ const parseHistoricalPoints = (markdown: string): HistoricalPoint[] => {
     points.set(month, {
       month,
       weight,
-      feedCount: cells.length > 2 ? Number(cells[2].replace(/[^\d.]/g, '')) || 0 : 0,
-      feedDuration: cells.length > 3 ? Number(cells[3].replace(/[^\d.]/g, '')) || 0 : 0,
-      waterCount: cells.length > 4 ? Number(cells[4].replace(/[^\d.]/g, '')) || 0 : 0,
-      waterDuration: cells.length > 5 ? Number(cells[5].replace(/[^\d.]/g, '')) || 0 : 0,
     });
   }
 
@@ -115,7 +111,7 @@ const parseCurvePointsFromReport = (markdown: string): CurvePoint[] => {
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
-    if (line.includes('预测生长曲线数据') && line.includes('Monthly')) {
+    if (line.includes('预测生长曲线') || (line.toLowerCase().includes('monthly') && line.includes('数据'))) {
       inPredictionSection = true;
       continue;
     }
@@ -169,13 +165,6 @@ const stats = computed(() => {
     avgDailyGain = (totalGain / totalDays).toFixed(2);
   }
 
-  // 采食强度：最新月的喂食次数
-  const latestHist = hist[hist.length - 1];
-  const feedIntensity = latestHist ? latestHist.feedCount : '--';
-
-  // 饮水指数：最新月饮水时长
-  const waterIndex = latestHist ? latestHist.waterDuration : '--';
-
   // 预测增重与跨度
   let predGain = '--';
   let predDuration = '--';
@@ -189,8 +178,6 @@ const stats = computed(() => {
     predGain,
     predDuration,
     avgDailyGain,
-    feedIntensity,
-    waterIndex,
   };
 });
 
@@ -271,8 +258,6 @@ const backToList = () => {
   reportError.value = '';
   isGeneratingReport.value = false;
   growthChart?.clear();
-  feedChart?.clear();
-  waterChart?.clear();
   gainChart?.clear();
 };
 
@@ -356,8 +341,6 @@ const reportHtml = computed(() => markdownToHtml(reportContent.value));
 const COLORS = {
   historical: '#6366f1',
   prediction: '#8b5cf6',
-  feed: '#f59e0b',
-  water: '#06b6d4',
   gain: '#10b981',
   gainRef: '#e2e8f0',
 };
@@ -457,76 +440,6 @@ const renderGrowthChart = () => {
   }, true);
 };
 
-// Tab2: 喂食趋势（次数 + 时长）
-const renderFeedChart = () => {
-  if (!feedChartRef.value) return;
-  feedChart = echarts.getInstanceByDom(feedChartRef.value) || echarts.init(feedChartRef.value);
-  const hist = historicalPoints.value;
-  if (!hist.length) { feedChart.clear(); return; }
-
-  feedChart.setOption({
-    animation: true, animationDuration: 1000,
-    grid: { top: 48, right: 50, bottom: 36, left: 48 },
-    legend: { data: ['喂食次数', '喂食时长(min)'], top: 8, textStyle: { color: '#64748b', fontSize: 12 }, icon: 'circle' },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.96)', borderColor: '#e2e8f0', textStyle: { color: '#0f172a' }, padding: [10, 14] },
-    xAxis: { type: 'category', data: hist.map(p => `${p.month}月`), axisLabel: { color: '#64748b' } },
-    yAxis: [
-      { type: 'value', name: '次数', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } } },
-      { type: 'value', name: '时长', axisLabel: { color: '#64748b', formatter: '{value}min' } },
-    ],
-    series: [
-      {
-        name: '喂食次数', type: 'bar', yAxisIndex: 0,
-        data: hist.map(p => p.feedCount),
-        barMaxWidth: 32,
-        itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#fbbf24' }, { offset: 1, color: '#f59e0b' }]), borderRadius: [4, 4, 0, 0] },
-      },
-      {
-        name: '喂食时长(min)', type: 'line', yAxisIndex: 1,
-        data: hist.map(p => p.feedDuration),
-        smooth: 0.4, symbol: 'circle', symbolSize: 7,
-        lineStyle: { width: 2.5, color: '#f97316' },
-        itemStyle: { color: '#f97316' },
-      },
-    ],
-  }, true);
-};
-
-// Tab3: 饮水趋势（次数 + 时长）
-const renderWaterChart = () => {
-  if (!waterChartRef.value) return;
-  waterChart = echarts.getInstanceByDom(waterChartRef.value) || echarts.init(waterChartRef.value);
-  const hist = historicalPoints.value;
-  if (!hist.length) { waterChart.clear(); return; }
-
-  waterChart.setOption({
-    animation: true, animationDuration: 1000,
-    grid: { top: 48, right: 50, bottom: 36, left: 48 },
-    legend: { data: ['饮水次数', '饮水时长(min)'], top: 8, textStyle: { color: '#64748b', fontSize: 12 }, icon: 'circle' },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.96)', borderColor: '#e2e8f0', textStyle: { color: '#0f172a' }, padding: [10, 14] },
-    xAxis: { type: 'category', data: hist.map(p => `${p.month}月`), axisLabel: { color: '#64748b' } },
-    yAxis: [
-      { type: 'value', name: '次数', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } } },
-      { type: 'value', name: '时长', axisLabel: { color: '#64748b', formatter: '{value}min' } },
-    ],
-    series: [
-      {
-        name: '饮水次数', type: 'bar', yAxisIndex: 0,
-        data: hist.map(p => p.waterCount),
-        barMaxWidth: 32,
-        itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#38bdf8' }, { offset: 1, color: '#0ea5e9' }]), borderRadius: [4, 4, 0, 0] },
-      },
-      {
-        name: '饮水时长(min)', type: 'line', yAxisIndex: 1,
-        data: hist.map(p => p.waterDuration),
-        smooth: 0.4, symbol: 'circle', symbolSize: 7,
-        lineStyle: { width: 2.5, color: '#06b6d4' },
-        itemStyle: { color: '#06b6d4' },
-        areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(6,182,212,0.15)' }, { offset: 1, color: 'rgba(255,255,255,0)' }]) },
-      },
-    ],
-  }, true);
-};
 
 // Tab4: 日增重分析（及参考线）
 const renderGainChart = () => {
@@ -584,20 +497,16 @@ const renderGainChart = () => {
 const renderActiveChart = async () => {
   await nextTick();
   if (activeTab.value === 'growth') renderGrowthChart();
-  else if (activeTab.value === 'feed') renderFeedChart();
-  else if (activeTab.value === 'water') renderWaterChart();
   else if (activeTab.value === 'gain') renderGainChart();
 };
 
-const switchTab = (tab: 'growth' | 'feed' | 'water' | 'gain') => {
+const switchTab = (tab: 'growth' | 'gain') => {
   activeTab.value = tab;
   renderActiveChart();
 };
 
 const resizeAllCharts = () => {
   growthChart?.resize();
-  feedChart?.resize();
-  waterChart?.resize();
   gainChart?.resize();
 };
 
@@ -619,10 +528,8 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', resizeAllCharts);
   growthChart?.dispose();
-  feedChart?.dispose();
-  waterChart?.dispose();
   gainChart?.dispose();
-  growthChart = feedChart = waterChart = gainChart = null;
+  growthChart = gainChart = null;
 });
 </script>
 
@@ -723,8 +630,8 @@ onUnmounted(() => {
       <!-- 报告详情视图 -->
       <div v-else class="h-full flex flex-col gap-6 overflow-y-auto custom-scrollbar">
 
-        <!-- 统计卡片区（6个） -->
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 flex-shrink-0">
+        <!-- 统计卡片区（4个） -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 flex-shrink-0">
           <!-- 当前体重 -->
           <div class="stat-card">
             <div class="stat-icon bg-emerald-50 border border-emerald-100 text-emerald-600"><span class="material-symbols-outlined text-[18px]">trending_up</span></div>
@@ -762,49 +669,17 @@ onUnmounted(() => {
                 </p>
              </div>
           </div>
-          <!-- 采食强度 -->
-          <div class="stat-card">
-            <div class="stat-icon bg-amber-50 border border-amber-200 text-amber-600"><span class="material-symbols-outlined text-[18px]">restaurant</span></div>
-            <div class="flex flex-col mt-2">
-                <p class="stat-label">采食强度</p>
-                <p class="stat-value text-amber-600">
-                  <template v-if="isGeneratingReport && !historicalPoints.length">
-                    <span class="text-[10px] text-emerald-900/30 animate-pulse tracking-widest font-bold">L-O-A-D</span>
-                  </template>
-                  <template v-else>{{ stats?.feedIntensity ?? '--' }}<span class="stat-unit text-amber-600/60">次/月</span></template>
-                </p>
-            </div>
-          </div>
-          <!-- 饮水指数 -->
-          <div class="stat-card">
-            <div class="stat-icon bg-cyan-50 border border-cyan-200 text-cyan-600"><span class="material-symbols-outlined text-[18px]">water_drop</span></div>
-            <div class="flex flex-col mt-2">
-                <p class="stat-label">饮水时长</p>
-                <p class="stat-value text-cyan-600">
-                  <template v-if="isGeneratingReport && !historicalPoints.length">
-                    <span class="text-[10px] text-emerald-900/30 animate-pulse tracking-widest font-bold">L-O-A-D</span>
-                  </template>
-                  <template v-else>{{ stats?.waterIndex ?? '--' }}<span class="stat-unit text-cyan-600/60">m/月</span></template>
-                </p>
-            </div>
-          </div>
         </div>
 
         <!-- 图表+报告区 -->
         <div class="flex flex-col md:flex-row gap-6 flex-1 min-h-[480px]">
           <!-- 左侧：多图表Tab区 -->
           <div class="w-full md:w-7/12 lg:w-2/3 flex flex-col gap-4">
-            <!-- Tab 导航 -->
             <div class="bg-white/80 border border-emerald-100 rounded-2xl p-1.5 flex gap-1 shadow-sm flex-shrink-0 backdrop-blur-sm">
               <button
-                v-for="tab in ([
-                  { key: 'growth', label: '生长曲线', icon: 'monitoring', activeColor: 'bg-emerald-950 text-white shadow-md' },
-                  { key: 'feed', label: '喂食趋势', icon: 'restaurant_menu', activeColor: 'bg-amber-600 text-white shadow-md' },
-                  { key: 'water', label: '饮水趋势', icon: 'water_drop', activeColor: 'bg-cyan-600 text-white shadow-md' },
-                  { key: 'gain', label: '日增重', icon: 'bolt', activeColor: 'bg-secondary text-white shadow-md' },
-                ] as const)"
+                v-for="tab in TABS"
                 :key="tab.key"
-                @click="switchTab(tab.key as any)"
+                @click="switchTab(tab.key)"
                 :class="[
                   'flex-1 py-2 px-1 flex items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-widest rounded-[14px] transition-all duration-300',
                   activeTab === tab.key ? tab.activeColor : 'text-emerald-900/50 hover:text-emerald-900 hover:bg-emerald-50/80',
@@ -844,19 +719,8 @@ onUnmounted(() => {
                 <p class="text-[11px] font-bold text-emerald-900/50 tracking-widest uppercase">需要至少 2 个月的历史数据序列才能聚合日增重</p>
               </div>
 
-              <!-- 历史数据不足提示（喂食/饮水Tab） -->
-              <div
-                v-else-if="(activeTab === 'feed' || activeTab === 'water') && !historicalPoints.length && !isGeneratingReport"
-                class="absolute inset-0 z-10 bg-white/95 rounded-[2rem] flex flex-col items-center justify-center px-6 text-center"
-              >
-                <span class="material-symbols-outlined text-[48px] text-emerald-200 mb-4 drop-shadow-sm">history_toggle_off</span>
-                <p class="text-[11px] font-bold text-emerald-900/50 tracking-widest uppercase">暂未解析到该生猪有效行为图谱数据</p>
-              </div>
-
               <!-- 图表画布（按Tab显示/隐藏以保留DOM） -->
               <div ref="growthChartRef" class="w-full h-full" :class="{ hidden: activeTab !== 'growth' }"></div>
-              <div ref="feedChartRef" class="w-full h-full" :class="{ hidden: activeTab !== 'feed' }"></div>
-              <div ref="waterChartRef" class="w-full h-full" :class="{ hidden: activeTab !== 'water' }"></div>
               <div ref="gainChartRef" class="w-full h-full" :class="{ hidden: activeTab !== 'gain' }"></div>
             </div>
           </div>

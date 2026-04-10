@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import re
 
 with open('v1/logic/bot_tools.py', 'r', encoding='utf-8') as f:

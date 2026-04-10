@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
 import random
@@ -105,7 +106,7 @@ def generate_pig_data(pig_id, has_anomaly=False):
     return data
 
 def main():
-    print(f"开始生成 {NUM_PIGS} 头金华两头乌生猪的 300 天生命周期时序数据...")
+    print(f"开始生成 {NUM_PIGS} 头两头乌生猪的 300 天生命周期时序数据...")
     all_data = []
     
     # 随机选择 4 头猪注入热应激异常

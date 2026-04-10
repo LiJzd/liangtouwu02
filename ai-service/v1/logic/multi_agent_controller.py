@@ -1,15 +1,18 @@
+# -*- coding: utf-8 -*-
 """
-多智能体控制器 - 也就是咱这套系统的“大内总管”。
-采用指挥官（Supervisor）+ 干活人（Worker）的架构来处理复杂任务。
+多智能体协作控制器
+
+实现基于 Supervisor-Worker 架构的任务分发与协调逻辑。
+支持 V2 版本的智能对话接口及多模态语音转文字服务。
 """
 from __future__ import annotations
 
 import logging
-
 import os
 import httpx
 import tempfile
-from fastapi import APIRouter, File, UploadFile
+from typing import Optional, List, Any
+from fastapi import APIRouter, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from v1.common.config import get_settings
 
@@ -19,12 +22,12 @@ from v1.objects.agent_schemas import AgentChatRequest, AgentChatResponse
 router = APIRouter()
 logger = logging.getLogger("multi_agent_controller")
 
-# 全局协调器实例（单例）
+# 全局协调器单例
 _orchestrator: MultiAgentOrchestrator | None = None
 
 
 def get_orchestrator() -> MultiAgentOrchestrator:
-    """把“总调度室”请出来（单例模式，保证全局只有这么一个）。"""
+    """获取多智能体协调器实例（单例模式）。"""
     global _orchestrator
     if _orchestrator is None:
         _orchestrator = MultiAgentOrchestrator()
@@ -32,56 +35,131 @@ def get_orchestrator() -> MultiAgentOrchestrator:
 
 
 @router.post("/chat/v2", response_model=AgentChatResponse)
-async def chat_v2(payload: AgentChatRequest) -> AgentChatResponse:
+async def chat_v2(
+    request: Request,
+    audio: Optional[UploadFile] = File(None),
+    images: List[UploadFile] = File(default=[])
+) -> AgentChatResponse:
     """
-    这是咱的高级对话接口（V2 版）。
-    
-    它比以前聪明在哪：
-    1. 指挥官先拿主意：就是 Supervisor 会先看看用户到底想干啥。
-    2. 干活人去执行：就是具体的 Worker，谁最擅长干这活儿就派谁去。
-    3. 最后汇总回话：把大家伙儿的力气往一块使，给老乡一个最准的答案。
+    智能体集群对话接口 (V2) - 增强多模态支持。
+    同时支持 JSON 格式和 Multipart/form-data 格式。
     """
-    logger.info(
-        "multi_agent_chat hit user_id=%s messages=%d",
-        payload.user_id,
-        len(payload.messages)
-    )
+    content_type = request.headers.get("content-type", "")
     
-    # 提取用户输入文本（兼容多模态 content 为列表的情况）
-    last_content = payload.messages[-1].content if payload.messages else ""
+    image_temp_paths = []
+    
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        user_id = str(form.get("user_id", "demo_user"))
+        messages_raw = str(form.get("messages", "[]"))
+        try:
+            import json
+            messages_list = json.loads(messages_raw)
+        except:
+            messages_list = []
+        
+        metadata_raw = str(form.get("metadata", "{}"))
+        try:
+            metadata = json.loads(metadata_raw)
+        except:
+            metadata = {}
+            
+        image_urls_raw = str(form.get("image_urls", "[]"))
+        try:
+            image_urls = json.loads(image_urls_raw)
+        except:
+            image_urls = []
+            
+        # 处理作为列表上传的图片文件
+        if images:
+            for img in images:
+                if not img.filename: continue
+                suffix = f".{img.filename.split('.')[-1]}" if "." in img.filename else ".jpg"
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                    tmp.write(await img.read())
+                    image_temp_paths.append(tmp.name)
+            logger.info(f"Received {len(image_temp_paths)} uploaded image files")
+        
+        # 将本地临时路径合并到 image_urls 中（Agent 执行时会识别这些本地路径）
+        image_urls.extend(image_temp_paths)
+        
+    else:
+        payload_data = await request.json()
+        payload = AgentChatRequest(**payload_data)
+        user_id = payload.user_id
+        messages_list = [m.model_dump() for m in payload.messages]
+        metadata = payload.metadata or {}
+        image_urls = payload.image_urls or []
+
+    audio_path = None
+    if audio:
+        suffix = ".webm"
+        if audio.filename and "." in audio.filename:
+            suffix = f".{audio.filename.split('.')[-1]}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(await audio.read())
+            audio_path = tmp.name
+        logger.info(f"Received audio file, saved to {audio_path}")
+
+    # 提取用户输入文本
+    last_msg = messages_list[-1] if messages_list else {"content": ""}
+    last_content = last_msg.get("content", "")
     if isinstance(last_content, list):
-        # 多模态格式：从 content 数组中提取文本部分
-        text_parts = [item.get("text", "") for item in last_content if isinstance(item, dict) and item.get("type") == "text"]
+        text_parts = [
+            item.get("text", "") 
+            for item in last_content 
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
         user_input_text = " ".join(text_parts) if text_parts else ""
     else:
         user_input_text = last_content or ""
     
-    # 构建上下文（包含多模态图片URL）
+    # 构建执行上下文
     context = AgentContext(
-        user_id=payload.user_id,
+        user_id=user_id,
         user_input=user_input_text,
-        chat_history=[m.model_dump() for m in payload.messages[:-1]],
-        metadata=payload.metadata or {},
-        client_id=f"user_{payload.user_id}",
-        image_urls=payload.image_urls,
+        chat_history=messages_list[:-1] if messages_list else [],
+        metadata=metadata,
+        client_id=f"user_{user_id}",
+        image_urls=image_urls,
+        audio_path=audio_path,
     )
     
-    # 执行多智能体协作
-    orchestrator = get_orchestrator()
-    result = await orchestrator.execute(context)
+    try:
+        # 调用协调器执行任务
+        orchestrator = get_orchestrator()
+        result = await orchestrator.execute(context)
+        
+        # 记录执行状态及调试信息
+        if result.thoughts:
+            logger.debug(f"Worker {result.worker_name} internal thought: {result.thoughts}")
+        
+        if result.error:
+            logger.error(f"Worker {result.worker_name} execution failed: {result.error}")
+        
+        if result.image:
+            logger.info(f"Returning image to frontend, content length: {len(result.image)}")
+        else:
+            logger.warning("No image returned to frontend")
     
-    # 记录调试信息
-    if result.thoughts:
-        logger.debug(f"Worker {result.worker_name} 思考过程: {result.thoughts}")
-    
-    if result.error:
-        logger.error(f"Worker {result.worker_name} 执行失败: {result.error}")
-    
-    if result.image:
-        logger.info(f"返回图片给前端，长度: {len(result.image)}")
-    else:
-        logger.warning("未返回图片给前端")
-    
+    finally:
+        # 清理临时音频文件
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.unlink(audio_path)
+                logger.debug(f"Temporary audio file deleted: {audio_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete temp audio: {e}")
+        
+        # 清理临时图像文件
+        for path in image_temp_paths:
+            if os.path.exists(path):
+                try:
+                    os.unlink(path)
+                    logger.debug(f"Temporary image file deleted: {path}")
+                except Exception as e:
+                    logger.error(f"Failed to delete temp image {path}: {e}")
+
     return AgentChatResponse(
         reply=result.answer,
         image=result.image,
@@ -92,14 +170,13 @@ async def chat_v2(payload: AgentChatRequest) -> AgentChatResponse:
 @router.post("/voice/transcribe")
 async def transcribe_voice(file: UploadFile = File(...)):
     """
-    专门对付网页上录下来的语音。
-    
-    老乡从浏览器里说的话，到这儿统统变成文字，方便后续 AI 理解。
+    语音转文字转录接口。
+    针对前端采集的音频文件，调用外部 ASR 引擎完成转录任务。
     """
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
     if not api_key:
-        logger.error("No DASHSCOPE_API_KEY found")
+        logger.error("DASHSCOPE_API_KEY missing in environment/config")
         return {"text": ""}
     
     suffix = ".webm"
@@ -130,10 +207,10 @@ async def transcribe_voice(file: UploadFile = File(...)):
             if resp.status_code == 200:
                 data = resp.json()
                 text = data.get("text", "")
-                logger.info(f"网页语音识别完成: {text}")
+                logger.info(f"Voice transcription completed: {text}")
                 return {"text": text}
             else:
-                logger.error(f"Voice Transcribe Error: {resp.text}")
+                logger.error(f"Voice Transcribe API error: {resp.text}")
                 return JSONResponse({"text": ""}, status_code=resp.status_code)
     except Exception as e:
         logger.error(f"Voice transcribe exception: {e}")

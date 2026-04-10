@@ -7,25 +7,25 @@
         "event_type": "异常发现",
         "description": "日龄118天，环境持续高温38-39℃，猪只LTW-003出现明显食欲减退，日采食量从2.1kg骤降至1.1kg，精神萎靡，偶有气喘。",
         "diagnosis": "热应激综合征（Heat Stress Syndrome）",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 119,
         "event_type": "干预措施",
         "description": "立即启动水帘降温系统，舍内温度由38.5℃降至28℃。饲料中添加0.5%碳酸氢钠（小苏打）缓解代谢性酸中毒，同时补充维生素C（200mg/kg饲料）和电解质。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 122,
         "event_type": "恢复观察",
         "description": "干预3天后，采食量恢复至1.8kg/天（正常水平85%），精神状态好转。继续维持水帘降温和饲料添加方案。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 130,
         "event_type": "恢复完成",
         "description": "日龄130天，采食量完全恢复至2.2kg/天，体重开始恢复正常增长趋势。热应激期间共损失约5天的有效生长时间，累计掉秤约2.5kg。停止碳酸氢钠添加，维生素C减量至100mg/kg。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       }
     ]
   },
@@ -37,25 +37,25 @@
         "event_type": "异常发现",
         "description": "日龄116天，持续高温天气（37-40℃），猪只LTW-007采食量显著下降，从1.9kg降至0.9kg，呼吸频率加快至60次/分钟，卧伏不起。",
         "diagnosis": "重度热应激，伴有轻度脱水",
-        "veterinarian": "李明辉"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 117,
         "event_type": "干预措施",
         "description": "紧急开启风机+湿帘联合降温，体感温度降至26℃。静脉补液500ml（含5%葡萄糖和生理盐水），口服补液盐。饲料调整为湿拌料（料水比1:1.5），添加0.3%小苏打+藿香正气散2g/头。调整饲喂时间至清晨5:00和傍晚19:00，避开高温时段。",
-        "veterinarian": "李明辉"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 121,
         "event_type": "恢复观察",
         "description": "补液后脱水症状缓解，呼吸频率降至30次/分钟。采食量恢复至1.4kg/天。体重测量显示较应激前下降约3.1kg。",
-        "veterinarian": "李明辉"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 132,
         "event_type": "恢复完成",
         "description": "采食量恢复至2.0kg/天（正常水平），体重恢复增长趋势。总计影响约16天生长周期，预计推迟出栏约10天。建议后续增加脂肪类能量饲料比例（豆油2%）补偿生长损失。",
-        "veterinarian": "李明辉"
+        "veterinarian": "驻场专家"
       }
     ]
   },
@@ -67,19 +67,19 @@
         "event_type": "异常发现",
         "description": "日龄120天，连续5日环境最高温度超过36℃，猪只LTW-012出现采食量下降（从2.0kg降至1.2kg），但精神状态尚可，未见明显呼吸加速。",
         "diagnosis": "轻度热应激",
-        "veterinarian": "赵志刚"
+        "veterinarian": "值班兽医"
       },
       {
         "day_age": 121,
         "event_type": "干预措施",
         "description": "增加饮水供应，确保24小时充足清洁水源。饲料中临时添加0.2%小苏打和绿豆皮粉1%（清热解暑）。调整通风系统风速至1.5m/s。",
-        "veterinarian": "赵志刚"
+        "veterinarian": "值班兽医"
       },
       {
         "day_age": 126,
         "event_type": "恢复观察",
         "description": "6天后采食量恢复至1.9kg/天，体重增长恢复。该猪热应激症状较轻，主要得益于早发现早处理。累计影响约1.5kg体重增长。",
-        "veterinarian": "赵志刚"
+        "veterinarian": "值班兽医"
       }
     ]
   },
@@ -91,31 +91,31 @@
         "event_type": "异常发现",
         "description": "日龄115天，高温高湿环境（温度38℃、湿度85%），猪只LTW-018采食量从2.1kg暴降至0.7kg，出现张口呼吸、流涎、皮肤发红。",
         "diagnosis": "急性热应激，疑似热射病前兆",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 115,
         "event_type": "紧急干预",
         "description": "立即用凉水喷淋体表降温（水温18℃），转移至通风良好的阴凉圈舍。肌注地塞米松注射液5mg预防应激反应，口服生理盐水1000ml+维生素B1注射液5ml。饲料暂停4小时后改为少量多餐的稀粥料。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 118,
         "event_type": "持续干预",
         "description": "猪只精神好转但采食量仅恢复至1.0kg/天。加强营养支持：饲料添加鱼粉3%补充优质蛋白，甜菜碱0.1%帮助恢复渗透压平衡。继续维持清凉环境。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 128,
         "event_type": "恢复观察",
         "description": "采食量恢复至1.7kg/天（正常80%），后续缓慢恢复中。热应激期间累计掉秤约4.2kg，属于本批次受影响最严重个体。预计出栏时间推迟15-20天。建议持续营养补偿至145日龄。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       },
       {
         "day_age": 145,
         "event_type": "恢复完成",
         "description": "日龄145天，各项指标恢复正常。营养补偿方案结束，恢复标准饲喂规程。最终热应激影响评估：有效生长时间损失约12天，累计体重损失约4.2kg已全部补回。",
-        "veterinarian": "王建华"
+        "veterinarian": "驻场专家"
       }
     ]
   }

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 测试多智能体架构
 验证 Supervisor 路由和 Worker 执行

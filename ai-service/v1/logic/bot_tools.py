@@ -1,22 +1,22 @@
+# -*- coding: utf-8 -*-
 """
-这里是整个 AI 服务的“工具箱”，所有 Agent 能动用的招数都在这儿定义。
+智能体工具集成模块。
 
-大概干了这么几件事：
-1. 给工具贴标签：用 @tool 装饰器一贴，这个函数就能被 AI 识别到了。
-2. 统一指挥：不管工具内部怎么写，对外暴露的接口都是统一的异步调用。
-3. 门类齐全：
-   - 基础类：查个时间、报个平安啥的。
-   - 查数类：通过 Java 接口去翻猪只的档案数据。
-   - 看病类：翻知识库、查环境指标、找历史病历。
-   - 算命类（预测）：看猪猪以后能长多重。
-   - 报警类：发现不对劲赶紧发告警。
-   - 视觉类：盯着监控截图看。
+本模块定义了多智能体系统可调用的工具集（Tools），实现了从底层能力到 LLM 推理链的封装。
+核心功能：
+1. 工具注册：通过 @tool 装饰器实现工具的自动化发现与注册。
+2. 调度集成：解耦工具实现与调用逻辑，统一异步接口规范。
+3. 领域覆盖：
+   - 基础工具：系统状态、时间及元数据检索。
+   - 数据查询：对接 Java 后端 API，提供生猪档案及生产数据查询。
+   - 知识检索：基于 RAG（检索增强生成）技术的猪病诊断与相似案例检索。
+   - 生产预测：集成了生长曲线及增重预测算法。
+   - 操作指令：告警发布、指令下发等。
 
-干活的规矩：
-- 必须得是异步函数 (async def)，别让系统卡死。
-- 输入参数一般就是一串字（要是复杂的就弄成 JSON 字符串）。
-- 吐出来的结果也得是字符串，方便 AI 读。
-- 参数怎么拆、类型怎么转，工具自己得负责好。
+交互规范：
+- 所有工具均采用异步 (async) 实现，确保 I/O 密集型任务的高并发性能。
+- 输入参数支持纯文本或结构化 JSON 字符串。
+- 输出结果统一为字符串格式，以便 LLM 推理链直接解析识别。
 """
 from __future__ import annotations
 
@@ -74,12 +74,12 @@ JAVA_API_TIMEOUT = 30.0  # 超时时间（秒）
 @dataclass(frozen=True)
 class Tool:
     """
-    这就是一个工具的画像。
+    描述工具元数据及其处理逻辑。
     
     Attributes:
-        name: 工具的唯一 ID，叫啥名全靠它。
-        description: 这段话是写给 AI 看的，告诉它啥时候该掏出这个工具。
-        handler: 真正干活的那个异步函数。
+        name: 工具名称标识符。
+        description: 工具功能描述（用于 LLM 意图识别与选择）。
+        handler: 具体的异步执行函数。
     """
     name: str
     description: str
@@ -92,11 +92,11 @@ _REGISTRY: Dict[str, Tool] = {}
 
 def tool(name: str, description: str) -> Callable[[Callable[[str], Awaitable[str]]], Callable[[str], Awaitable[str]]]:
     """
-    把普通函数包装成工具的魔术贴。
+    用于将异步函数注册为系统可用工具的装饰器。
     
-    用法：
-        @tool(name="查天气", description="用来查现在的天气预报")
-        async def weather_func(city: str) -> str:
+    Example:
+        @tool(name="query_status", description="查询系统当前运行状态")
+        async def query_func(param: str) -> str:
             ...
     """
     def decorator(func: Callable[[str], Awaitable[str]]) -> Callable[[str], Awaitable[str]]:
@@ -123,7 +123,8 @@ def list_tools() -> Dict[str, Tool]:
 
 def _parse_args(text: str) -> Dict[str, Any]:
     """
-    智能拆包器：管你塞进来的是 JSON、键值对还是乱七八糟的字，咱们都得把它理顺。
+    通用参数解析器。
+    支持 JSON 格式字符串、键值对（Key=Value）或纯文本参数的解析与归一化。
     """
     raw = (text or "").strip()
     data: Dict[str, Any] = {}
@@ -212,7 +213,7 @@ def _coerce_int(value: Any, default: int | None = None) -> int | None:
 
 @tool(name="当前时间", description="返回服务器当前时间")
 async def tool_current_time(_: str) -> str:
-    """报个时。"""
+    """返回当前系统时间戳。"""
     now = datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -296,9 +297,9 @@ async def tool_list_pigs(arg: str) -> str:
 @tool(name="get_pig_info_by_id", description="查询猪只基础信息与生长周期（通过 Java API）")
 async def tool_get_pig_info_by_id(arg: str) -> str:
     """
-    查查某头猪的详细户口本。
+    检索特定猪只的详细档案。
     
-    不管是品种、生日还是它以前每个月的体重，统统翻出来。
+    返回包括品种、日龄、生长期数据、历史体重记录等详细信息。
     """
     data = _parse_args(arg)
     pig_id = None
@@ -904,7 +905,7 @@ async def tool_get_farm_stats(arg: str) -> str:
 
 @tool(
     name="publish_alert",
-    description="触发网页端异常告警大屏，并播放网页端语音播报。当通过其他工具获取到异常（如环境异常、健康异常）时，务必调用此工具将告警发布并触发语音提醒。参数是JSON格式，包含 pigId, area, type, risk, announcementText 字段。",
+    description="向网页前端发布异常告警，并触发系统语音播报。当检测到环境异常、健康异常或生产风险时，必须调用此工具进行实时预警。参数为 JSON 格式，包含 pigId, area, type, risk, announcementText 等字段。",
 )
 async def tool_publish_alert(arg: str) -> str:
     data = _parse_args(arg)
@@ -923,7 +924,7 @@ async def tool_publish_alert(arg: str) -> str:
     
     import logging
     logger = logging.getLogger("bot_tools")
-    logger.info(f"🎙️ 正在调用网页语音播报 / 告警发布工具，播报内容: {payload.get('announcementText')}")
+    logger.info(f"正在执行告警发布与语音播报任务，播报内容: {payload.get('announcementText')}")
 
     try:
         async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
@@ -954,7 +955,7 @@ async def tool_publish_alert(arg: str) -> str:
         return json.dumps({"error": f"publish_alert failed: {str(e)}"}, ensure_ascii=False)
 
 
-@tool(name="capture_pig_farm_snapshot", description="截取猪场视频图像并进行 AI 识别，返回检测到的猪只位置和状态")
+@tool(name="capture_pig_farm_snapshot", description="执行猪场视频帧截取并进行视觉目标检测，识别猪只位置、数量及当前状态。")
 async def tool_capture_pig_farm_snapshot(arg: str) -> str:
     """
     截取猪场视频的当前帧并进行 YOLO 目标检测

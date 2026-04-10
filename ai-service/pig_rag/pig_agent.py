@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 AI 诊断大脑：专门负责查病历、写生长报告和给专家建议。
 """
@@ -50,7 +51,7 @@ def _to_int(v: Any, default: int = 0) -> int:
 # 诊断逻辑和提示词（核心大脑）
 
 # 让 AI 扮演资深兽医的设定。
-DIAGNOSIS_SYSTEM_PROMPT = """你是一位资深的畜牧兽医专家，专注于金华两头乌猪种的生长管理。
+DIAGNOSIS_SYSTEM_PROMPT = """你是一位资深的畜牧兽医专家，专注于两头乌猪种的生长管理。
 
 你的任务是根据以下信息生成一份专业的诊断报告和干预建议：
 1. 数值模型计算出的体重偏差结论（如掉秤百分比、预测终重等）
@@ -321,7 +322,7 @@ def _generate_template_diagnosis(prompt: str, error: str = "") -> str:
         "",
         "### 干预建议",
         "- 定期维护：建议每周进行一次精确称重，校正算法模型空间",
-        "- 饮水管理：确保猪舍自动饮水系统压力正常，满足金华猪高水分代谢需求",
+        "- 饮水管理：确保猪舍自动饮水系统压力正常，满足两头乌猪高水分代谢需求",
         "- 专家介入：如偏差持续扩大至 15% 以上，请联系驻场高级兽医进行现场核查",
     ])
 
@@ -507,7 +508,7 @@ def build_dual_track_report(
         # 评估相似度等级
         if dtw_dist < 0.2:
             similarity = "极高相似"
-            similarity_icon = "🎯"
+            similarity_icon = "[TARGET]"
         elif dtw_dist < 0.5:
             similarity = "高度相似"
             similarity_icon = "✅"

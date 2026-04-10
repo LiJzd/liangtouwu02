@@ -12,6 +12,7 @@ const navItems = [
   { id: 'growth-curve', label: '生长曲线', icon: 'trending_up', path: '/growth-curve' },
   { id: 'daily-briefing', label: '每日报告', icon: 'analytics', path: '/daily-briefing' },
   { id: 'alerts', label: '告警中心', icon: 'warning', path: '/alerts' },
+  { id: 'remote-control', label: '远程控制', icon: 'settings_remote', path: '/remote-control' },
   { id: 'pig-bot', label: '猪BOT助手', icon: 'smart_toy', path: '/pig-bot' },
 ];
 
@@ -30,7 +31,7 @@ function handleNavigate(path: string) {
   <div class="flex flex-col min-h-[100dvh]">
     <header class="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md flex justify-between items-center px-8 h-14 border-b border-emerald-200">
       <div class="flex items-center gap-4">
-        <img alt="掌上明猪" class="h-8 object-contain" src="/图片1.png"/>
+        <img alt="掌上明猪" class="h-8 object-contain" src="/logo.png"/>
         <div class="h-5 w-[1px] bg-emerald-300"></div>
         <h2 class="font-headline text-base font-bold text-emerald-900">两头乌智能养殖</h2>
       </div>
@@ -43,7 +44,6 @@ function handleNavigate(path: string) {
         <div class="flex items-center gap-4 border-l border-emerald-200 pl-6">
           <span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer hover:text-secondary">sensors</span>
           <span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer hover:text-secondary">notifications</span>
-          <img alt="Avatar" class="w-7 h-7 rounded-full border border-primary/20" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsvcPIiqtWe6IPYn76xNYm8l2GfeFjBBZF5y-G8_1OSEjj2eaC-v7kjPbp9TjRhIyV-97o94u2Lo1Fn3U5zxDt0mUykSfgcnqgG1caAs2Q94NwVIXxJyzc-mbNcTBkFg9YWrH4juffdUOUXbsMZyDd870lvmlXngGvty5TXsiTYYvQeb3qq82nxZl9sFS5MXQFtPoKjyPjN0imKPL8o30Gv4Kb6dvT9znRdZqIZtYv6nH_aSmtNAFoHxFapziZ2bas0vl3Wzy_zxPj"/>
         </div>
       </div>
     </header>

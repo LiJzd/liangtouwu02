@@ -5,6 +5,7 @@ import Alerts from './pages/Alerts.vue'
 import GrowthCurve from './pages/GrowthCurve.vue'
 import DailyBriefing from './pages/DailyBriefing.vue'
 import PigBot from './pages/PigBot.vue'
+import RemoteControl from './pages/RemoteControl.vue'
 import Layout from './Layout.vue'
 
 const routes = [
@@ -45,6 +46,11 @@ const routes = [
                 path: 'alerts',
                 name: 'Alerts',
                 component: Alerts
+            },
+            {
+                path: 'remote-control',
+                name: 'RemoteControl',
+                component: RemoteControl
             }
         ]
     }
