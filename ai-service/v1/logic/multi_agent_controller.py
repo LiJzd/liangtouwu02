@@ -16,7 +16,7 @@ from fastapi import APIRouter, File, UploadFile, Form, Request
 from fastapi.responses import JSONResponse
 from v1.common.config import get_settings
 
-from v1.logic.multi_agent_core import AgentContext, MultiAgentOrchestrator
+from v1.logic.multi_agent_core import AgentContext, MultiAgentOrchestrator, AgentResult
 from v1.objects.agent_schemas import AgentChatRequest, AgentChatResponse
 
 router = APIRouter()
@@ -115,12 +115,13 @@ async def chat_v2(
         user_input_text = last_content or ""
     
     # 构建执行上下文
+    trace_id = metadata.get("trace_id") or f"user_{user_id}"
     context = AgentContext(
         user_id=user_id,
         user_input=user_input_text,
         chat_history=messages_list[:-1] if messages_list else [],
         metadata=metadata,
-        client_id=f"user_{user_id}",
+        client_id=trace_id,
         image_urls=image_urls,
         audio_path=audio_path,
     )
@@ -131,6 +132,15 @@ async def chat_v2(
         result = await orchestrator.execute(context)
         
         # 记录执行状态及调试信息
+        if result is None:
+            logger.error("Orchestrator.execute returned None, creating fallback result")
+            result = AgentResult(
+                success=False,
+                answer="系统繁忙，诊断流程执行异常，请稍后再试。",
+                worker_name="orchestrator",
+                error="Result is None"
+            )
+        
         if result.thoughts:
             logger.debug(f"Worker {result.worker_name} internal thought: {result.thoughts}")
         

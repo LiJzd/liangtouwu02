@@ -712,7 +712,8 @@ export const apiService = {
     chatWithPigBot: async (
         messages: { role: string; content: any }[],
         imageUrls: string[] = [],
-        audioBlob: Blob | null = null
+        audioBlob: Blob | null = null,
+        metadata: any = {}
     ) => {
         const baseUrl = import.meta.env.DEV ? 'http://localhost:8000' : '';
         
@@ -723,6 +724,7 @@ export const apiService = {
             formData.append('messages', JSON.stringify(messages));
             formData.append('image_urls', JSON.stringify(imageUrls));
             formData.append('audio', audioBlob, 'voice.webm');
+            formData.append('metadata', JSON.stringify(metadata));
             
             const res = await fetch(`${baseUrl}/api/v1/agent/chat/v2`, {
                 method: 'POST',
@@ -744,7 +746,7 @@ export const apiService = {
                 user_id: "demo_user",
                 messages,
                 image_urls: imageUrls,
-                metadata: {}
+                metadata: metadata
             })
         });
         
@@ -772,6 +774,36 @@ export const apiService = {
             throw new Error(`ASR Failed: ${res.status} - ${errBody}`);
         }
         return await res.json();
+    },
+
+    /**
+     * 连接到智能体追踪实时流 (SSE)
+     * 获取 ReAct 过程中的 Thought/Action/Observation 推送。
+     */
+    streamAgentTrace: async (
+        clientId: string,
+        onEvent: (event: { type: string; data: any; timestamp: string }) => void
+    ) => {
+        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+        const url = `${baseUrl}/agent/debug/agent-trace?client_id=${clientId}`;
+        
+        const eventSource = new EventSource(url);
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                onEvent(data);
+            } catch (e) {
+                console.error("Parse agent trace error:", e);
+            }
+        };
+        
+        eventSource.onerror = (err) => {
+            console.error("Agent trace stream error:", err);
+            eventSource.close();
+        };
+        
+        return () => eventSource.close(); // 返回清理函数
     },
 
     // 获取生长曲线预测数据点

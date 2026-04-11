@@ -28,7 +28,7 @@ async def get_or_create_queue(client_id: str = "default") -> asyncio.Queue:
         return _debug_queues[client_id]
 
 
-async def push_debug_event(event_type: str, data: dict, client_id: str = "default") -> None:
+async def push_debug_event(event_type: str, data: dict, client_id: str = "default", agent: str = None, status: str = None) -> None:
     """
     向调试队列推送事件消息。
     
@@ -38,6 +38,8 @@ async def push_debug_event(event_type: str, data: dict, client_id: str = "defaul
     event = {
         "type": event_type,
         "data": data,
+        "agent": agent,
+        "status": status,
         "timestamp": datetime.now().isoformat()
     }
     try:
@@ -74,7 +76,7 @@ async def agent_trace_stream(client_id: str = "default"):
             while True:
                 # 等待事件（带超时，避免连接僵死）
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
                     # 发送心跳包

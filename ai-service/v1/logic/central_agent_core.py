@@ -82,14 +82,17 @@ Question: {input}
 Thought: {agent_scratchpad}"""
 
 
-class RichTraceHandler(BaseCallbackHandler):
+from langchain_core.callbacks import AsyncCallbackHandler
+
+class RichTraceHandler(AsyncCallbackHandler):
     """这个类主要负责把 Agent 的“内心戏”用漂亮的方式打印出来，顺便同步给前端调试看。"""
 
-    def __init__(self, client_id: str = "default"):
+    def __init__(self, client_id: str = "default", agent_name: str = "Agent"):
         super().__init__()
         self.client_id = client_id
+        self.agent_name = agent_name
 
-    def on_agent_action(self, action, **kwargs):  # type: ignore[override]
+    async def on_agent_action(self, action, **kwargs):  # type: ignore[override]
         """当 Agent 决定要做啥动作（调啥工具）的时候，就会触发这里。"""
         tool_name = getattr(action, "tool", "unknown")
         tool_input = getattr(action, "tool_input", "")
@@ -102,12 +105,26 @@ class RichTraceHandler(BaseCallbackHandler):
         
         # 推送到 SSE 调试流
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._push_event("action", {
+            # 尝试清理并美化 JSON 参数
+            clean_input = str(tool_input).strip()
+            if clean_input.startswith("Action Input:"):
+                clean_input = clean_input[13:].strip()
+            
+            # 格式化 JSON 以便前端代码块展示
+            try:
+                import json
+                if clean_input.startswith("{") or clean_input.startswith("["):
+                    parsed_json = json.loads(clean_input)
+                    clean_input = json.dumps(parsed_json, indent=2, ensure_ascii=False)
+            except Exception:
+                pass # 解析失败则保持原样
+            
+            from v1.logic.agent_debug_controller import push_debug_event
+            await push_debug_event("action", {
                 "tool": tool_name,
-                "input": str(tool_input),
-                "thought": thought
-            }))
+                "input": clean_input,
+                "thought": thought or "正在进行方案决策..."
+            }, self.client_id, agent=self.agent_name, status="思索中")
         except (RuntimeError, Exception):
             pass
 
@@ -126,7 +143,7 @@ class RichTraceHandler(BaseCallbackHandler):
         
         console.print(Panel(
             content,
-            title="[bold magenta]Agent 思维链[/]",
+            title=f"[bold magenta][{self.agent_name} 思维链][/]",
             border_style="magenta",
             expand=False
         ))
@@ -151,22 +168,22 @@ class RichTraceHandler(BaseCallbackHandler):
             loop = asyncio.get_running_loop()
             loop.create_task(self._push_event("observation", {
                 "output": str(output)[:1000]
-            }))
+            }, status="工作中"))
         except (RuntimeError, Exception):
             pass
 
         # 不再向控制台打印带有完整数据的观测结果，避免控制台刷屏
 
-    def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
-        """Agent 终于想明白答案了，推理结束。"""
+    async def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
+        """Agent 搞定了，给出一个最终结论。"""
         output = getattr(finish, "return_values", {}).get("output", "")
         
         # 推送到 SSE 调试流
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._push_event("final_answer", {
+            from v1.logic.agent_debug_controller import push_debug_event
+            await push_debug_event("final_answer", {
                 "answer": str(output)
-            }))
+            }, self.client_id, agent=self.agent_name, status="决策完成")
         except (RuntimeError, Exception):
             pass
 
@@ -176,16 +193,16 @@ class RichTraceHandler(BaseCallbackHandler):
         
         console.print(Panel(
             Text(str(output), style="bold white"),
-            title="[bold green][Final Answer][/]",
+            title=f"[bold green][{self.agent_name} 结论][/]",
             border_style="green",
             expand=False
         ))
 
-    async def _push_event(self, event_type: str, data: dict):
+    async def _push_event(self, event_type: str, data: dict, status: str = None):
         """推送事件到调试流"""
         try:
             from v1.logic.agent_debug_controller import push_debug_event
-            await push_debug_event(event_type, data, self.client_id)
+            await push_debug_event(event_type, data, self.client_id, agent=self.agent_name, status=status)
         except Exception:
             pass  # 调试流失败不影响主流程
 

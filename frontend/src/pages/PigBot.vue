@@ -15,6 +15,22 @@ interface ChatMessage {
 const messages = ref<ChatMessage[]>([]);
 const inputMessage = ref('');
 const isSending = ref(false);
+
+// 思维链日志状态
+interface TraceLog {
+  id: string;
+  type: 'thought' | 'action' | 'observation' | 'final_answer' | 'error' | 'connected';
+  agent?: string;      // 智能体名称
+  status?: string;     // 当前状态 (思索中, 工作中, 等待中)
+  content: string;
+  timestamp: string;
+  title?: string;
+  isFolded: boolean;   // 是否折叠详情
+  raw?: any;
+}
+const traceLogs = ref<TraceLog[]>([]);
+const showTracePanel = ref(false);
+let traceCleanup: (() => void) | null = null;
 const chatContainer = ref<HTMLElement | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const pendingImage = ref<string | null>(null);
@@ -94,6 +110,72 @@ const handleSend = async () => {
   });
   await scrollToBottom();
 
+  // 1. 初始化思维链追踪
+  const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  traceLogs.value = [];
+  showTracePanel.value = true;
+  
+  if (traceCleanup) traceCleanup();
+  const currentCleanup = await apiService.streamAgentTrace(traceId, (event) => {
+    const logId = `log_${Date.now()}_${Math.random()}`;
+    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    
+    let content = '';
+    let title = '';
+    
+    if (event.type === 'action') {
+      content = `正在调用工具: ${event.data.tool}\n参数: ${event.data.input}`;
+      title = event.data.thought || '执行行动';
+    } else if (event.type === 'observation') {
+      content = typeof event.data.output === 'string' ? event.data.output : JSON.stringify(event.data.output);
+      title = '观察结果';
+    } else if (event.type === 'final_answer') {
+      content = event.data.answer;
+      title = '得出结论';
+    } else if (event.type === 'connected') {
+      content = '已连接到 AI 推理引擎，正在进行意图路由...';
+      title = '链路就绪';
+    } else if (event.type === 'error') {
+      content = event.data.message;
+      title = '推理异常';
+    } else if (event.type === 'thought') {
+      content = event.data.content;
+      title = '心中戏';
+    } else if (event.type === 'heartbeat') {
+      return; // 忽略心跳包，不推送到 UI
+    }
+
+    if (content || event.type === 'action') {
+      // 🚀 核心优化：同一 Agent 仅保留最新的“工作中”状态
+      if (event.agent) {
+        traceLogs.value.forEach(log => {
+          if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
+            log.status = null;
+          }
+        });
+      }
+
+      traceLogs.value.push({
+        id: logId,
+        type: event.type as any,
+        agent: event.agent,
+        status: event.status,
+        content: content,
+        raw: event.data || {},
+        title: title,
+        isFolded: true,
+        timestamp
+      });
+
+      // 自动滚动
+      nextTick(() => {
+        const panel = document.querySelector('.custom-scrollbar');
+        if (panel) panel.scrollTop = panel.scrollHeight;
+      });
+    }
+  });
+  traceCleanup = currentCleanup;
+
   try {
     const apiMessages = messages.value
       .filter(m => !m.isTyping)
@@ -105,7 +187,13 @@ const handleSend = async () => {
     const recentMessages = apiMessages.slice(-10);
     const urlsToSends = imageToUpload ? [imageToUpload] : [];
 
-    const response = await apiService.chatWithPigBot(recentMessages, urlsToSends, audioToUpload);
+    // 将 trace_id 放入 metadata 中
+    const response = await apiService.chatWithPigBot(
+      recentMessages, 
+      urlsToSends, 
+      audioToUpload,
+      { trace_id: traceId }
+    );
     
     messages.value = messages.value.filter(m => m.id !== typingMsgId);
     
@@ -127,6 +215,16 @@ const handleSend = async () => {
     });
   } finally {
     isSending.value = false;
+    // 延迟关闭 trace 链接，等待最后的消息送达
+    setTimeout(() => {
+      if (currentCleanup) {
+        currentCleanup();
+        // 只有当全局追踪变量仍然指向当前连接时才置空
+        if (traceCleanup === currentCleanup) {
+          traceCleanup = null;
+        }
+      }
+    }, 2000);
     await scrollToBottom();
   }
 };
@@ -231,7 +329,6 @@ const stopRecording = () => {
     <div class="flex-1 flex justify-center items-center relative py-2">
       <!-- 手机外壳 -->
       <div class="relative w-[360px] md:w-[380px] h-[720px] md:h-[780px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
-        
         <!-- 侧边物理按键特效 -->
         <div class="absolute -left-[14px] top-32 w-1 h-8 rounded-l-md bg-emerald-900"></div>
         <div class="absolute -left-[14px] top-48 w-1 h-12 rounded-l-md bg-emerald-900"></div>
@@ -425,6 +522,162 @@ const stopRecording = () => {
         </div>
       </div>
     </div>
+
+    <!-- 🚀 右侧思维链展示面板 (大屏可见) 🚀 -->
+    <div v-if="showTracePanel" class="hidden xl:flex w-[450px] bg-white/40 backdrop-blur-3xl rounded-[2rem] shadow-xl border border-white/20 flex-col overflow-hidden self-start mt-6 h-[720px] md:h-[780px] animate-in slide-in-from-right duration-500">
+      <header class="p-5 border-b border-emerald-100/50 flex items-center justify-between bg-white/60">
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+          <h3 class="font-bold text-emerald-950 text-sm tracking-tight flex items-center gap-2">
+            AI 深度工作流
+            <span class="px-2 py-0.5 bg-emerald-100 text-secondary rounded-full text-[10px] uppercase font-black">Multi-Agent</span>
+          </h3>
+        </div>
+        <button @click="showTracePanel = false" class="text-emerald-900/30 hover:text-emerald-900 transition-colors">
+          <span class="material-symbols-outlined text-[18px]">close</span>
+        </button>
+      </header>
+      
+      <div class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-emerald-50/5">
+        <div v-if="traceLogs.length === 0" class="h-full flex flex-col items-center justify-center text-emerald-900/10 gap-4">
+          <div class="relative">
+            <span class="material-symbols-outlined text-[64px] animate-spin duration-[3s]">hub</span>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span class="material-symbols-outlined text-[24px] text-secondary animate-pulse">psychology</span>
+            </div>
+          </div>
+          <p class="text-[12px] font-bold uppercase tracking-[0.2em] text-emerald-900/40">正在激活多智能体协议...</p>
+        </div>
+        
+        <div 
+          v-for="(log, idx) in traceLogs" 
+          :key="log.id" 
+          class="relative pl-8 animate-in fade-in slide-in-from-bottom-2 duration-400 mb-4"
+        >
+          <!-- 连接线 (Antigravity 风格) -->
+          <div v-if="idx < traceLogs.length - 1" class="absolute left-[11px] top-[36px] bottom-[-20px] w-[2px] bg-gradient-to-b from-emerald-200 via-emerald-100/50 to-transparent"></div>
+          
+          <!-- 节点图标 -->
+          <div class="absolute left-0 top-1.5 w-6 h-6 rounded-xl border-2 border-white shadow-lg flex items-center justify-center z-10 transition-all hover:scale-110 group-hover:rotate-6"
+            :class="{
+              'bg-blue-500 text-white': log.type === 'thought' || log.type === 'connected',
+              'bg-indigo-500 text-white': log.type === 'action',
+              'bg-amber-400 text-white': log.type === 'observation',
+              'bg-emerald-500 text-white': log.type === 'final_answer',
+              'bg-red-500 text-white': log.type === 'error'
+            }"
+          >
+            <span class="material-symbols-outlined text-[14px] font-bold">
+              {{ 
+                log.type === 'thought' ? 'psychology' : 
+                log.type === 'action' ? 'bolt' : 
+                log.type === 'observation' ? 'visibility' : 
+                log.type === 'final_answer' ? 'auto_awesome' :
+                log.type === 'error' ? 'report' : 'hub'
+              }}
+            </span>
+          </div>
+          
+          <!-- 内容卡片 -->
+          <div class="bg-white/80 rounded-2xl p-4 shadow-sm border border-emerald-50 group hover:shadow-md hover:border-emerald-100 transition-all overflow-hidden relative">
+            <!-- 顶部 Agent 标识栏 -->
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-2">
+                <span v-if="log.agent" class="px-2 py-0.5 bg-emerald-950 text-white rounded-md text-[9px] font-bold uppercase tracking-wider font-mono shadow-sm">
+                  {{ log.agent }}
+                </span>
+                <span v-if="log.status" class="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 text-secondary border border-emerald-100 rounded-md text-[9px] font-bold animate-in fade-in">
+                  <span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" v-if="log.status !== '决策完成' && log.status !== '就绪'"></span>
+                  {{ log.status }}
+                </span>
+                <span v-else class="text-[10px] font-black text-emerald-900/30 uppercase tracking-widest font-inter">
+                  {{ log.title }}
+                </span>
+              </div>
+              <span class="text-[9px] text-emerald-900/20 font-bold font-inter">{{ log.timestamp }}</span>
+            </div>
+
+            <!-- 推理内容 -->
+            <div class="space-y-3">
+              <!-- Thought 核心展示 -->
+              <div v-if="log.type === 'thought' || log.raw?.thought" class="text-[13px] text-emerald-950 leading-relaxed font-medium">
+                {{ log.type === 'thought' ? log.content : log.raw.thought }}
+              </div>
+
+              <!-- Action 展示 (折叠部分) -->
+              <div v-if="log.type === 'action'" class="space-y-2">
+                <div class="flex items-center gap-2 bg-indigo-50/50 p-2 rounded-xl border border-indigo-100/50">
+                  <span class="material-symbols-outlined text-indigo-500 text-[18px]">construction</span>
+                  <span class="text-sm font-bold text-indigo-900 font-mono">{{ log.raw.tool }}</span>
+                  <button @click="log.isFolded = !log.isFolded" class="ml-auto flex items-center gap-1 text-[10px] font-black uppercase text-indigo-400 hover:text-indigo-600 transition-colors bg-white px-2 py-0.5 rounded-lg border border-indigo-50">
+                    {{ log.isFolded ? '展开详情' : '隐藏详情' }}
+                    <span class="material-symbols-outlined text-[12px]">{{ log.isFolded ? 'expand_more' : 'expand_less' }}</span>
+                  </button>
+                </div>
+                
+                <div v-if="!log.isFolded" class="animate-in slide-in-from-top-1 duration-200">
+                  <div class="bg-gray-900 rounded-xl p-3 shadow-inner overflow-x-auto border border-gray-800">
+                    <pre class="text-[11px] text-emerald-400 font-mono leading-relaxed overflow-x-hidden whitespace-pre-wrap"><code>{{ log.raw.input }}</code></pre>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Observation 展示 (折叠部分) -->
+              <div v-if="log.type === 'observation'" class="bg-amber-50/30 rounded-xl p-3 border border-amber-100/50">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-1.5 text-amber-700">
+                    <span class="material-symbols-outlined text-[14px]">visibility</span>
+                    <span class="text-[10px] font-bold uppercase tracking-widest">观察结果</span>
+                  </div>
+                  <button @click="log.isFolded = !log.isFolded" class="text-[10px] font-black text-amber-500 hover:text-amber-700 uppercase">
+                    {{ log.isFolded ? '查看' : '收起' }}
+                  </button>
+                </div>
+                <div v-if="!log.isFolded" class="text-[12px] text-amber-900/80 font-inter leading-relaxed whitespace-pre-wrap animate-in fade-in">
+                  {{ log.content }}
+                </div>
+                <div v-else class="text-[11px] text-amber-900/30 italic">内容已折叠</div>
+              </div>
+
+              <!-- Final Answer 展示 -->
+              <div v-if="log.type === 'final_answer'" class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 shadow-inner">
+                <div class="flex items-center gap-2 mb-2 text-secondary">
+                  <span class="material-symbols-outlined text-[18px]">verified</span>
+                  <span class="text-[11px] font-black uppercase tracking-widest">最终结论</span>
+                </div>
+                <div class="text-[13px] text-emerald-950 leading-relaxed font-inter">
+                  {{ log.content }}
+                </div>
+              </div>
+
+              <!-- 普通日志消息 -->
+              <div v-if="log.type === 'connected' || log.type === 'error'" 
+                :class="log.type === 'error' ? 'text-red-500' : 'text-emerald-900/60'"
+                class="text-[12px] leading-relaxed font-inter"
+              >
+                {{ log.content }}
+              </div>
+            </div>
+
+            <!-- 修饰水印 -->
+            <div class="absolute -right-2 -bottom-2 opacity-[0.02] rotate-12 pointer-events-none">
+              <span class="material-symbols-outlined text-[80px]">{{ 
+                log.type === 'thought' ? 'psychology' : 
+                log.type === 'action' ? 'bolt' : 
+                'hub'
+              }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <footer class="p-4 bg-emerald-900/5 border-t border-emerald-100/50">
+        <div class="flex items-center gap-2 text-[10px] text-emerald-900/40 font-bold uppercase tracking-widest">
+          <span class="material-symbols-outlined text-[14px]">terminal</span>
+          <span>Real-time Multi-Agent Trace</span>
+        </div>
+      </footer>
+    </div>
   </div>
 </template>
 
@@ -445,6 +698,14 @@ const stopRecording = () => {
   animation: scaleIn 0.3s ease-out forwards;
 }
 
+.slide-in-from-right {
+  animation: slideInRight 0.5s ease-out forwards;
+}
+
+.slide-in-from-bottom-2 {
+  animation: slideInBottom 0.3s ease-out forwards;
+}
+
 @keyframes scaleIn {
   from {
     opacity: 0;
@@ -453,6 +714,28 @@ const stopRecording = () => {
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>

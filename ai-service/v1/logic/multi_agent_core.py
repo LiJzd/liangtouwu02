@@ -247,6 +247,7 @@ class AgentResult:
     error: Optional[str] = None
     image: Optional[str] = None
     metadata: Optional[dict] = None
+    trace_id: Optional[str] = None
 
     def __post_init__(self):
         """初始化默认值"""
@@ -306,7 +307,7 @@ class SupervisorAgent:
         omni_model = getattr(settings, "dashscope_omni_model", "qwen-plus")
         return api_key, base_url, model, omni_model
     
-    async def route(self, user_input: str, has_image: bool = False, has_audio: bool = False) -> str:
+    async def route(self, user_input: str, has_image: bool = False, has_audio: bool = False, client_id: str = "default") -> str:
         """
         根据用户输入及附件状态进行意图路由。
         
@@ -325,7 +326,7 @@ class SupervisorAgent:
             
             if HAS_RICH and console:
                 console.print(Panel(
-                    Text(f"检测到{reason}，直接路由到: vet_agent (多模态处理)", style="bold cyan"),
+                    Text(f"检测到{reason}，直接路由到: VetAgent (多模态处理)", style="bold cyan"),
                     title="[bold magenta][Supervisor 决策 (多模态)][/]",
                     border_style="magenta"
                 ))
@@ -333,9 +334,16 @@ class SupervisorAgent:
                 logger.info(f"Supervisor 路由: 检测到{reason} -> vet_agent")
             return "vet_agent"
         
+        from v1.logic.agent_debug_controller import push_debug_event
+        
+        # 记录路由开始
+        await push_debug_event("thought", {"content": f"正在分析您的指令: {user_input[:50]}..."}, client_id, agent="SupervisorAgent", status="思索中")
+        
         if not HAS_OPENAI or not self.api_key:
             # 降级到规则引擎
-            return self._rule_based_route(user_input)
+            worker_name = self._rule_based_route(user_input)
+            await push_debug_event("action", {"tool": "RuleEngine", "input": user_input, "thought": "降级到硬编码规则逻辑"}, client_id, agent="Supervisor", status="工作中")
+            return worker_name
         
         try:
             prompt = SUPERVISOR_PROMPT.format(user_input=user_input)
@@ -361,8 +369,19 @@ class SupervisorAgent:
                         temperature=0.1,
                         result_format='message'
                     )
-            
-            response = await asyncio.to_thread(_call)
+            try:
+                response = await asyncio.to_thread(_call)
+            except Exception as e:
+                logger.warning(f"DashScope 原生调用触发网络异常: {e}，尝试使用备用通道...")
+                # 尝试使用 LangChain 版 LLM 备用（httpx 通常具有更好的连接兼容性）
+                from v1.common.langchain_compat import HAS_LANGCHAIN, ChatOpenAI
+                if HAS_LANGCHAIN:
+                    llm = ChatOpenAI(api_key=self.api_key, base_url=self.base_url, model=self.model)
+                    res_msg = await llm.ainvoke(prompt)
+                    worker_name = res_msg.content
+                    await push_debug_event("observation", {"output": "主连接中断，已切换至备用安全信道"}, client_id, agent="Supervisor", status="工作中")
+                    return worker_name.strip().replace("`","").lower()
+                raise e
             
             if response.status_code != 200:
                 err_msg = f"Supervisor API Error: code={response.code}, message={response.message}, request_id={response.request_id}"
@@ -388,13 +407,18 @@ class SupervisorAgent:
                         text_parts.append(str(item))
                 worker_name = "".join(text_parts)
             
-            worker_name = worker_name.strip().lower()
+            worker_name = worker_name.strip().replace("`", "").lower()
+            
+            # 提取可能的解释（如果 LLM 返回了 Thought）
+            await push_debug_event("action", {"tool": "IntentSupervisor", "input": worker_name, "thought": f"分析完毕，决定将任务路由至: {worker_name}"}, client_id, agent="Supervisor", status="决策完成")
             
             # 验证返回值
             valid_workers = ["vet_agent", "data_agent", "perception_agent", "growth_curve_agent", "briefing_agent", "direct_reply"]
             if worker_name not in valid_workers:
                 logger.warning(f"Supervisor 返回无效 worker: {worker_name}，降级到规则引擎")
-                return self._rule_based_route(user_input)
+                fallback = self._rule_based_route(user_input)
+                await push_debug_event("observation", {"output": f"注意：模型返回了未知节点 {worker_name}，已自动修正为 {fallback}"}, client_id, agent="Supervisor", status="工作中")
+                return fallback
             
             if HAS_RICH and console:
                 console.print(Panel(
@@ -409,7 +433,9 @@ class SupervisorAgent:
             
         except Exception as e:
             logger.error(f"Supervisor 路由失败: {e}，降级到规则引擎")
-            return self._rule_based_route(user_input)
+            fallback = self._rule_based_route(user_input)
+            await push_debug_event("error", {"message": f"路由层发生异常: {str(e)}，切换至安全模式"}, client_id, agent="Supervisor")
+            return fallback
     
     def _rule_based_route(self, user_input: str) -> str:
         """规则引擎兜底路由逻辑。"""
@@ -422,7 +448,7 @@ class SupervisorAgent:
             "全场报告", "场内简报", "日常巡检汇总",
         ]
         if any(k in text for k in briefing_keywords):
-            return "briefing_agent"
+            return "BriefingAgent"
 
         # 生长曲线关键词（单只猪分析）
         growth_curve_keywords = [
@@ -431,7 +457,7 @@ class SupervisorAgent:
             "日增重", "生长预测",
         ]
         if any(k in text for k in growth_curve_keywords):
-            return "growth_curve_agent"
+            return "GrowthCurveAgent"
 
         # 兽医诊断关键词
         vet_keywords = [
@@ -447,7 +473,7 @@ class SupervisorAgent:
             "月龄", "id", "编号"
         ]
         if any(k in text for k in data_keywords):
-            return "data_agent"
+            return "DataAgent"
 
         # 视觉识别关键词
         perception_keywords = [
@@ -455,7 +481,7 @@ class SupervisorAgent:
             "状态", "截图", "识别", "检测", "看看", "看下"
         ]
         if any(k in text for k in perception_keywords):
-            return "perception_agent"
+            return "PerceptionAgent"
 
         # 默认直接回复
         return "direct_reply"
@@ -497,12 +523,13 @@ class WorkerAgent(ABC):
         """获取该 Worker 可用的工具"""
         pass
     
-    async def execute(self, context: AgentContext) -> AgentResult:
+    async def execute(self, context: AgentContext, max_iterations: int = 4) -> AgentResult:
         """
         执行 ReAct 推理循环：思考 -> 行动 -> 观察 -> 总结。
         
         Args:
             context: 执行上下文信息
+            max_iterations: 最大迭代次数，默认为 4
         
         Returns:
             AgentResult: 执行结果封装
@@ -561,24 +588,31 @@ class WorkerAgent(ABC):
             agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
             
             # 创建 Executor（增加 Pydantic 兼容性保护）
+            from v1.logic.central_agent_core import RichTraceHandler
+            callbacks = [RichTraceHandler(client_id=context.client_id, agent_name=self.name)] if HAS_LANGCHAIN else []
+            
             try:
                 agent_executor = AgentExecutor(
                     agent=agent,
                     tools=tools,
                     verbose=True,
                     handle_parsing_errors=True,
-                    max_iterations=4,  # 减少迭代次数，提升响应速度
+                    max_iterations=max_iterations,
                     callbacks=callbacks,
+                    return_intermediate_steps=True,
                 )
             except Exception as e:
-                logger.warning(f"AgentExecutor 带着 callbacks 初始化失败 (可能是 Pydantic 验证问题)，尝试不带回调启动: {e}")
+                logger.warning(f"Agent {self.name} Executor 带着 callbacks 初始化失败，尝试带回调的手动注入: {e}")
+                # 兜底：如果初始化失败，手动确保 callbacks 存在
                 agent_executor = AgentExecutor(
                     agent=agent,
                     tools=tools,
                     verbose=True,
                     handle_parsing_errors=True,
-                    max_iterations=4,
+                    max_iterations=max_iterations,
+                    return_intermediate_steps=True,
                 )
+                agent_executor.callbacks = callbacks
 
             # 构建输入
             input_text = self._build_input(context)
@@ -757,7 +791,7 @@ class VetAgent(WorkerAgent):
 - **结合现场**：必须参考视觉分析报告（如果存在）以及环境数据。
 - **专业与克制**：回复内容应保持在 3-5 句核心结论内，如有严重风险必须调用 publish_alert。"""
         
-        super().__init__(name="vet_agent", system_prompt=system_prompt, tools=[])
+        super().__init__(name="VetAgent", system_prompt=system_prompt, tools=[])
     
     def get_tools(self) -> List[LCTool]:
         """获取兽医专家智能体可用的工具集。"""
@@ -787,7 +821,7 @@ class VetAgent(WorkerAgent):
         return tools
     
 
-    async def execute(self, context: AgentContext) -> AgentResult:
+    async def execute(self, context: AgentContext, max_iterations: int = 4) -> AgentResult:
         """
         执行诊断逻辑。
         针对多模态输入（图片）与纯文本输入分别执行相应的处理流程。
@@ -795,158 +829,9 @@ class VetAgent(WorkerAgent):
         if context.image_urls or context.audio_path:
             return await self._execute_multimodal_two_stage(context)
         
-        # 纯文本模式：直接走增强版 ReAct（已在 system_prompt 中强制 CoT）
-        return await self._execute_with_more_iterations(context)
-    
-    async def _execute_with_more_iterations(self, context: AgentContext) -> AgentResult:
-        """执行高迭代次数的 ReAct 推理过程，以确保多步工具链调用的完整性。"""
-        if not HAS_LANGCHAIN:
-            return AgentResult(
-                success=False,
-                answer="系统繁忙，请稍后再试。",
-                worker_name=self.name,
-                error="LangChain 未安装"
-            )
-        
-        if not self.api_key:
-            return AgentResult(
-                success=False,
-                answer="系统繁忙，请稍后再试。",
-                worker_name=self.name,
-                error="缺少 API Key"
-            )
-        
-        try:
-            if HAS_RICH and console:
-                console.print(Panel(
-                    Text(f"执行单元: {self.name}\n任务内容: {context.user_input}", style="white"),
-                    title=f"[bold green][{self.name.upper()} 智能助手启动][/]",
-                    border_style="green"
-                ))
-            
-            # 构建 LLM (使用自定义原生驱动以绕过 403 配额错误)
-            try:
-                llm = DashScopeNativeChat(
-                    model=self.model,
-                    api_key=self.api_key,
-                    temperature=0.1,
-                    max_tokens=2000
-                )
-            except Exception as e:
-                logger.warning(f"原生驱动启动失败，尝试降级: {e}")
-                llm = ChatOpenAI(
-                    api_key=self.api_key,
-                    base_url=self.base_url,
-                    model=self.model,
-                    temperature=0.1,
-                    max_tokens=2000,
-                )
-            
-            # 获取工具
-            tools = self.get_tools()
-            
-            # 标准 ReAct 流程
-            # 构建 ReAct 提示词
-            react_prompt = self._build_react_prompt()
-            
-            # 创建 Agent
-            agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
+        # 纯文本模式：直接走增强版 ReAct（迭代次数设为 6 以应对复杂问诊）
+        return await super().execute(context, max_iterations=6)
 
-            # 创建 AgentExecutor
-            from v1.logic.central_agent_core import RichTraceHandler
-            callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
-            
-            # 创建 AgentExecutor（增加 Pydantic 兼容性保护）
-            try:
-                agent_executor = AgentExecutor(
-                    agent=agent,
-                    tools=tools,
-                    verbose=False,
-                    handle_parsing_errors=True,
-                    max_iterations=5,      # 减少迭代次数到 5 次，平衡深度与响应速
-                    return_intermediate_steps=True,
-                    callbacks=callbacks,
-                )
-            except Exception as e:
-                logger.warning(f"VetAgent AgentExecutor 带着 callbacks 初始化失败，尝试不带回调启动: {e}")
-                agent_executor = AgentExecutor(
-                    agent=agent,
-                    tools=tools,
-                    verbose=False,
-                    handle_parsing_errors=True,
-                    max_iterations=5,
-                    return_intermediate_steps=True,
-                )
-            
-            input_text = self._build_input(context)
-            try:
-                result = await agent_executor.ainvoke({"input": input_text})
-            except Exception as e:
-                import logging
-                logging.getLogger("multi_agent_core").error(f"ReAct Exception: {e}")
-                
-                # 兜底容错返回
-                raw_output = f"[系统保护强制接管] 诊断执行异常，错误详情：{str(e)[:150]}... 请尝试精简提问。"
-                return AgentResult(
-                    success=False,
-                    answer=raw_output,
-                    worker_name=self.name,
-                    error=str(e)
-                )
-            
-            raw_output = result.get("output", "")
-            clean_output = self._extract_final_answer(raw_output)
-            
-            intermediate_steps = result.get("intermediate_steps", [])
-            tool_outputs = []
-            thoughts = []
-            
-            for step in intermediate_steps:
-                if len(step) >= 2:
-                    action, observation = step[0], step[1]
-                    tool_name = getattr(action, "tool", "unknown")
-                    tool_input = getattr(action, "tool_input", "")
-                    thoughts.append(f"Action: {tool_name}")
-                    thoughts.append(f"Action Input: {tool_input}")
-                    tool_outputs.append(str(observation))
-                    thoughts.append(f"Observation: {observation}")
-            
-            # 如果 AgentExecutor 超限但中间步骤有有用内容，尝试从 _Exception 中提取
-            if (not clean_output or "Agent stopped" in raw_output) and intermediate_steps:
-                logger.warning("AgentExecutor 超限，尝试从中间步骤提取答案")
-                for step in reversed(intermediate_steps):
-                    if len(step) >= 2:
-                        observation = str(step[1])
-                        # _Exception 的 observation 中包含 LLM 生成的完整答案
-                        extracted = self._extract_final_answer(observation)
-                        if extracted and len(extracted) > 20:
-                            clean_output = extracted
-                            logger.info(f"成功从中间步骤提取答案，长度: {len(clean_output)}")
-                            break
-            
-            # 检查是否调用了足够的工具
-            tool_count = len([t for t in thoughts if t.startswith("Action: ") and not t.startswith("Action: _Exception")])
-            if tool_count < 2:
-                logger.warning(f"VetAgent 只调用了 {tool_count} 个工具，不满足最低要求")
-            
-            return AgentResult(
-                success=True,
-                answer=clean_output if clean_output else "诊断完成。",
-                worker_name=self.name,
-                thoughts=thoughts,
-                tool_outputs=tool_outputs,
-                metadata={"tool_calls": tool_count, "mode": "react_cot"}
-            )
-            
-        except Exception as e:
-            logger.error(f"{self.name} 执行失败: {e}", exc_info=True)
-            return AgentResult(
-                success=False,
-                answer="诊断过程出了点问题，老乡您再说一遍症状，我重新帮您看。",
-                worker_name=self.name,
-                error=str(e)
-            )
-    
     def _preprocess_image(self, image_data: str) -> Optional[str]:
         """
         预处理图片：如果图片非 JPEG、体积过大或分辨率过高，则进行缩放和格式转换。
@@ -1018,15 +903,21 @@ class VetAgent(WorkerAgent):
         # ============================================================
         visual_and_audio_analysis = ""
         try:
+            from v1.logic.agent_debug_controller import push_debug_event
+            # 推送到前端展示：正在启动视觉识别
+            await push_debug_event("thought", {"content": "检测到图片/语音输入，正在启动多模态感知引擎解析生猪体征..."}, context.client_id, agent="VetAgent", status="工作中")
+            
             if HAS_RICH and console:
                 console.print(Panel(
                     "执行中...",
-                    title=f"[bold green][VET_AGENT 阶段1: 视觉/听觉识别][/]",
+                    title=f"[bold green][VetAgent 阶段1: 视觉/听觉识别][/]",
                     border_style="green"
                 ))
             
             # 调用 Omni 提取特征
+            await push_debug_event("action", {"tool": "VisualPerception", "input": "Image/Audio Streams", "thought": "正在进行跨模态特征提取，识别皮温、呼吸频率及行为模式..."}, context.client_id, agent="VetAgent", status="工作中")
             visual_and_audio_analysis = await self._execute_omni_feature_extraction(context)
+            await push_debug_event("observation", {"output": f"检测报告：{visual_and_audio_analysis[:100]}..."}, context.client_id, agent="VetAgent", status="工作中")
             
             if HAS_RICH and console:
                 console.print(Panel(
@@ -1045,10 +936,12 @@ class VetAgent(WorkerAgent):
         # 阶段 2: 专家工具链诊断 (ReAct Loop)
         # ============================================================
         try:
+            await push_debug_event("thought", {"content": "视觉分析完毕，已识别到关键体征。现在启动专家逻辑进行深度诊断方案交叉验证..."}, context.client_id, agent="VetAgent", status="工作中")
+            
             if HAS_RICH and console:
                 console.print(Panel(
                     Text("[二阶段诊断 - 开启工具链交叉验证]", style="white"),
-                    title=f"[bold green][VET_AGENT 阶段2: 专家链启动][/]",
+                    title=f"[bold green][VetAgent 阶段2: 专家链启动][/]",
                     border_style="green"
                 ))
             
@@ -1084,8 +977,8 @@ class VetAgent(WorkerAgent):
                         metadata={"multimodal_mode": "fast_track_omni"}
                     )
 
-            # 执行 ReAct
-            react_result = await self._execute_with_more_iterations(text_context)
+            # 执行 ReAct (专家诊断阶段，迭代次数设为 6 以应对复杂问诊)
+            react_result = await self.execute(text_context, max_iterations=6)
             
             # 丰富元数据
             react_result.metadata = react_result.metadata or {}
@@ -1252,7 +1145,7 @@ class DataAgent(WorkerAgent):
 - 琛ㄦ牸绗竴鍒楀彧鑳藉啓鏁板瓧鏈堜唤锛岀浜屽垪鍙兘鍐欐暟瀛椾綋閲嶏紝绗笁鍒楀啓鈥滃綋鍓嶁€濇垨鈥滈娴嬧€濈瓑鐘舵€佽鏄?
 - 杩欑鎶ュ憡鍦烘櫙涓嶅啀闄愬埗 1-3 鍙ヨ瘽锛屼互鎶ュ憡瀹屾暣鎬т负浼樺厛"""
 
-        super().__init__(name="data_agent", system_prompt=system_prompt, tools=[])
+        super().__init__(name="DataAgent", system_prompt=system_prompt, tools=[])
     
     def get_tools(self) -> List[LCTool]:
         """获取数据分析智能体可用的工具集。"""
@@ -1718,7 +1611,7 @@ class PerceptionAgent(WorkerAgent):
 - **环境反思**：若画面不清晰或没检测到猪只，需客观说明环境限制（光线、角度等）。
 - **言简意赅**：保持回复专业且精炼。"""
         
-        super().__init__(name="perception_agent", system_prompt=system_prompt, tools=[])
+        super().__init__(name="PerceptionAgent", system_prompt=system_prompt, tools=[])
     
     def get_tools(self) -> List[LCTool]:
         """获取视觉感知智能体可用的工具集。"""
@@ -1771,7 +1664,7 @@ class GrowthCurveAgent(WorkerAgent):
 3. 预测增长表格，标题必须为：### 预测生长曲线数据 (Monthly)
 4. 针对性的生产建议"""
 
-        super().__init__(name="growth_curve_agent", system_prompt=system_prompt, tools=[])
+        super().__init__(name="GrowthCurveAgent", system_prompt=system_prompt, tools=[])
 
     def get_tools(self) -> List[LCTool]:
         from v1.logic.bot_tools import list_tools
@@ -1807,7 +1700,7 @@ class GrowthCurveAgent(WorkerAgent):
             agent = create_react_agent(llm=llm, tools=tools, prompt=self._build_react_prompt())
             
             from v1.logic.central_agent_core import RichTraceHandler
-            callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
+            callbacks = [RichTraceHandler(client_id=context.client_id, agent_name=self.name)] if HAS_RICH else []
             
             executor = AgentExecutor(
                 agent=agent,
@@ -1839,9 +1732,6 @@ class GrowthCurveAgent(WorkerAgent):
         if not pig_id:
             return AgentResult(success=False, answer="缺少猪只编号，无法生成生长曲线报告。", worker_name=self.name, error="missing pig_id")
         try:
-            pig_raw = await tool_get_pig_info_by_id(json.dumps({"pig_id": pig_id}, ensure_ascii=False))
-            pig_info = json.loads(pig_raw) if pig_raw.strip().startswith("{") else {}
-            growth_raw = await tool_query_pig_growth_prediction(json.dumps({"pig_id": pig_id}, ensure_ascii=False))
             growth_data = json.loads(growth_raw) if growth_raw.strip().startswith("{") else {}
             breed = pig_info.get("breed", "两头乌")
             current_month = pig_info.get("current_month") or pig_info.get("currentMonth") or 0
@@ -1909,7 +1799,7 @@ class BriefingAgent(WorkerAgent):
 - **完整性**：简报必须涵盖全场概览、环境参数、异常猪只及管理建议。
 - **数据来源**：仅使用工具返回的真实数据进行组织，严禁为了“美观”或“完整”而虚构模拟数据。"""
 
-        super().__init__(name="briefing_agent", system_prompt=system_prompt, tools=[])
+        super().__init__(name="BriefingAgent", system_prompt=system_prompt, tools=[])
 
     def get_tools(self) -> List[LCTool]:
         from v1.logic.bot_tools import list_tools
@@ -1945,7 +1835,7 @@ class BriefingAgent(WorkerAgent):
             agent = create_react_agent(llm=llm, tools=tools, prompt=self._build_react_prompt())
             
             from v1.logic.central_agent_core import RichTraceHandler
-            callbacks = [RichTraceHandler(client_id=context.client_id)] if HAS_RICH else []
+            callbacks = [RichTraceHandler(client_id=context.client_id, agent_name=self.name)] if HAS_RICH else []
             
             executor = AgentExecutor(
                 agent=agent,
@@ -2065,7 +1955,12 @@ class MultiAgentOrchestrator:
         # 路由（传递是否有图片及音频）
         has_image = bool(context.image_urls)
         has_audio = bool(context.audio_path)
-        worker_name = await self.supervisor.route(context.user_input, has_image=has_image, has_audio=has_audio)
+        worker_name = await self.supervisor.route(
+            context.user_input, 
+            has_image=has_image, 
+            has_audio=has_audio,
+            client_id=context.client_id
+        )
         
         # 直接回复（不需要 Worker）
         if worker_name == "direct_reply":
@@ -2086,6 +1981,9 @@ class MultiAgentOrchestrator:
     
     async def _direct_reply(self, context: AgentContext) -> AgentResult:
         """处理非任务型请求（如问候、通用咨询）的直接回复逻辑。"""
+        from v1.logic.agent_debug_controller import push_debug_event
+        await push_debug_event("thought", {"content": "检测到非业务类指令，正在准备友好回复..."}, context.client_id, agent="Supervisor", status="工作中")
+        
         if not HAS_OPENAI:
             return AgentResult(
                 success=True,
@@ -2113,6 +2011,7 @@ class MultiAgentOrchestrator:
             response = await asyncio.to_thread(_call)
             
             answer = response.choices[0].message.content.strip()
+            await push_debug_event("final_answer", {"answer": answer}, context.client_id, agent="Supervisor")
             
             return AgentResult(
                 success=True,
