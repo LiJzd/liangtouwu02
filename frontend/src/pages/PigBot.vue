@@ -293,42 +293,11 @@ const stopRecording = () => {
 </script>
 
 <template>
-  <div class="h-[calc(100vh-8rem)] min-h-[600px] w-full max-w-6xl mx-auto flex gap-6 pb-4 relative z-10">
-    
-    <!-- 左侧详情 (大屏可见) -->
-    <div class="hidden lg:flex w-72 bg-white/80 backdrop-blur-3xl rounded-[2rem] shadow-sm border border-emerald-100 flex-col overflow-hidden self-start mt-6">
-      <div class="h-44 bg-gradient-to-br from-emerald-500 to-secondary relative flex items-center justify-center text-white">
-        <!-- 装饰底纹 -->
-        <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20 pointer-events-none"></div>
-        <span class="material-symbols-outlined text-white text-[72px] drop-shadow-lg opacity-90 z-10">smart_toy</span>
-        <div class="absolute bottom-4 text-center w-full z-10">
-          <p class="font-bold font-headline text-2xl tracking-tight">PigBOT AI</p>
-          <p class="text-[10px] text-emerald-50 mt-1 font-inter font-bold tracking-widest uppercase">全天候视觉驱动诊断服务</p>
-        </div>
-      </div>
-      <div class="p-6 text-emerald-900/70 text-xs space-y-4 font-inter leading-relaxed bg-surface-bright/50">
-        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
-          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">qr_code_scanner</span>
-          <span class="font-bold">深度视觉化验</span>
-          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">为上传的图像或现场视频指认病理特征分析。</span>
-        </p>
-        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
-          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">database</span>
-          <span class="font-bold">专家知识中枢</span>
-          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">集成兽牧专业 RAG 资料库，辅助出具全息诊疗法。</span>
-        </p>
-        <p class="flex items-start gap-2.5 bg-white/90 p-4 rounded-2xl border border-emerald-50 shadow-sm hover:-translate-y-1 transition-transform">
-          <span class="material-symbols-outlined text-[16px] text-secondary shrink-0 bg-emerald-50 rounded-full p-1 border border-emerald-100">3p</span>
-          <span class="font-bold">长程环境溯源</span>
-          <span class="block w-full mt-1 text-[11px] text-emerald-900/50">支持联系上下文环境连续问询，提供全局洞察力。</span>
-        </p>
-      </div>
-    </div>
-
+  <div class="h-[calc(100vh-8rem)] min-h-[600px] w-full max-w-[1400px] mx-auto flex gap-10 pb-4 relative z-10">
     <!-- 🌟 手机模拟器视图 🌟 -->
     <div class="flex-1 flex justify-center items-center relative py-2">
       <!-- 手机外壳 -->
-      <div class="relative w-[360px] md:w-[380px] h-[720px] md:h-[780px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
+      <div class="relative w-[420px] md:w-[460px] h-[780px] md:h-[850px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
         <!-- 侧边物理按键特效 -->
         <div class="absolute -left-[14px] top-32 w-1 h-8 rounded-l-md bg-emerald-900"></div>
         <div class="absolute -left-[14px] top-48 w-1 h-12 rounded-l-md bg-emerald-900"></div>
@@ -524,7 +493,7 @@ const stopRecording = () => {
     </div>
 
     <!-- 🚀 右侧思维链展示面板 (大屏可见) 🚀 -->
-    <div v-if="showTracePanel" class="hidden xl:flex w-[450px] bg-white/40 backdrop-blur-3xl rounded-[2rem] shadow-xl border border-white/20 flex-col overflow-hidden self-start mt-6 h-[720px] md:h-[780px] animate-in slide-in-from-right duration-500">
+    <div v-if="showTracePanel" class="hidden xl:flex w-[550px] bg-white/40 backdrop-blur-3xl rounded-[2rem] shadow-xl border border-white/20 flex-col overflow-hidden self-start mt-6 h-[780px] md:h-[850px] animate-in slide-in-from-right duration-500">
       <header class="p-5 border-b border-emerald-100/50 flex items-center justify-between bg-white/60">
         <div class="flex items-center gap-2">
           <div class="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
