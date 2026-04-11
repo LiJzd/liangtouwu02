@@ -1659,10 +1659,10 @@ class GrowthCurveAgent(WorkerAgent):
 - **流程规范**：获取数据（Thought/Action/Observation） -> 整合分析 -> 格式化输出（Final Answer）。
 
 ## 输出报告规范（Final Answer 部分）：
-1. 基本信息表格（ID、品种、月龄、体重）
-2. 历史实测数据表格，标题必须为：### 历史实测数据 (Historical)
-3. 预测增长表格，标题必须为：### 预测生长曲线数据 (Monthly)
-4. 针对性的生产建议"""
+1. 基本信息表格（ID、品种、月龄、当前体重）
+2. 历史实测数据表格，标题必须为：### 历史实测数据 (Historical)。表格必须包含且仅包含三列：| 月龄 | 实测体重 (kg) | 状态 |
+3. 预测增长表格，标题必须为：### 预测生长曲线数据 (Monthly)。表格必须包含且仅包含三列：| 月份 (Month) | 拟合/预测体重 (kg) | 状态 |
+4. 针对性的生产建议（如饲喂调整、出栏评估等）"""
 
         super().__init__(name="GrowthCurveAgent", system_prompt=system_prompt, tools=[])
 

@@ -31,6 +31,7 @@ logger = logging.getLogger("pig_inspection")
 class InspectionRequest(BaseModel):
     """检测报告请求对象。"""
     pig_id: str = Field(..., min_length=1, max_length=64)
+    trace_id: Optional[str] = Field(None, description="用于追踪 AI 推理过程的会话 ID")
 
 
 class InspectionResponse(BaseModel):
@@ -62,6 +63,8 @@ def _build_growth_curve_intent(pig_id: str) -> str:
     """构建生长曲线分析的智能体指令（Intent）。"""
     return (
         f"请为猪只 {pig_id} 生成生长曲线报告。"
+        f"请注意，本系统专注的品种统称为【两头乌】。"
+        f"⚠️ 禁止在报告中出现任何真实地名（如具体省、市、县、区、街道等）或真实人名。"
         f"此请求来自生长曲线分析模块，"
         f"必须调用数据工具获取真实指标，禁止生成虚假数据。"
     )
@@ -71,7 +74,8 @@ def _build_briefing_intent() -> str:
     """构建每日简报生成的智能体指令（Intent）。"""
     today = datetime.now().strftime("%Y-%m-%d")
     return (
-        f"请生成 {today} 两头乌养殖场每日简报。"
+        f"请生成 {today} 两头乌智能养殖场每日简报。"
+        f"⚠️ 禁止在简报中出现任何真实地名或真实人名。"
         f"此请求来自每日简报模块，"
         f"必须聚合统计数据、环境参数及健康预警信息。"
     )
@@ -79,7 +83,7 @@ def _build_briefing_intent() -> str:
 
 # --- 核心执行逻辑 ---
 
-async def _run_growth_curve_via_agent(pig_id: str) -> str:
+async def _run_growth_curve_via_agent(pig_id: str, trace_id: Optional[str] = None) -> str:
     """调用智能体调度器执行生长曲线分析任务。"""
     context = AgentContext(
         user_id=f"growth_curve_{pig_id}",
@@ -90,7 +94,7 @@ async def _run_growth_curve_via_agent(pig_id: str) -> str:
             "report_type": "growth_curve",
             "pig_id": pig_id,
         },
-        client_id=f"growth_curve_{pig_id}",
+        client_id=trace_id or f"growth_curve_{pig_id}",
         image_urls=None,
     )
     logger.info("growth_curve: routing via orchestrator, pig_id=%s", pig_id)
@@ -133,7 +137,7 @@ async def _run_briefing_via_agent() -> str:
 async def generate_inspection_report(request: InspectionRequest):
     """生成指定猪只的生长曲线分析报告（同步接口）。"""
     try:
-        report = await _run_growth_curve_via_agent(request.pig_id)
+        report = await _run_growth_curve_via_agent(request.pig_id, trace_id=request.trace_id)
         if not report or report.startswith("error:"):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -159,7 +163,7 @@ async def generate_inspection_report_stream(request: InspectionRequest):
     async def _gen():
         try:
             yield _fmt_sse("status", {"message": "Routing to GrowthCurve Specialist..."})
-            report = await _run_growth_curve_via_agent(request.pig_id)
+            report = await _run_growth_curve_via_agent(request.pig_id, trace_id=request.trace_id)
             if not report or report.startswith("error:"):
                 yield _fmt_sse("error", {
                     "code": 500, "message": "Analysis failed",

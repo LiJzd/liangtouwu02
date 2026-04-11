@@ -88,12 +88,11 @@ export const MOCK_ALERTS: Alert[] = [
     { id: 1, pigId: 'PIG-001', area: '一号舍', type: '发热预警', risk: 'High', timestamp: '2026-03-12 10:00' },
     { id: 2, pigId: 'PIG-023', area: '二号舍', type: '活跃度低', risk: 'Medium', timestamp: '2026-03-12 09:45' },
     { id: 3, pigId: 'PIG-105', area: '一号舍', type: '异常攻击行为', risk: 'Critical', timestamp: '2026-03-12 09:30' },
-    // ... 更多预警条目略
 ];
 
 export const MOCK_PIGS_LIST = [
-    { pigId: 'PIG001', breed: '杜洛克', area: '一号舍', current_weight_kg: 45.0, current_month: 3 },
-    { pigId: 'PIG002', breed: '陆川猪', area: '一号舍', current_weight_kg: 52.3, current_month: 4 },
+    { pigId: 'PIG001', breed: '两头乌', area: '一号舍', current_weight_kg: 45.0, current_month: 3 },
+    { pigId: 'PIG002', breed: '两头乌', area: '一号舍', current_weight_kg: 52.3, current_month: 4 },
     { pigId: 'PIG004', breed: '两头乌', area: '三号舍', current_weight_kg: 40.5, current_month: 3 },
 ];
 
@@ -117,7 +116,7 @@ function generateMockBriefingContent(date: string, dayOffset: number): string {
     const humidity = (65 + Math.random() * 10).toFixed(0);
     const ammonia = (8 + Math.random() * 5).toFixed(1);
     
-    return `# ${date} 两头乌养殖场智能诊断简报
+    return `# ${date} 两头乌智能养殖场智能诊断简报
 
 ## 📊 整体概况
 
@@ -613,7 +612,7 @@ export const apiService = {
     },
 
     // 同步生成 AI 报告（耗时较长）
-    generatePigInspectionReport: async (pigId: string) => {
+    generatePigInspectionReport: async (pigId: string, traceId?: string) => {
 
         if (!USE_REAL_API) {
             await delay(1500);
@@ -624,7 +623,7 @@ export const apiService = {
         const resp = await fetch(`${baseUrl}/inspection/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pig_id: pigId })
+            body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
         });
         if (!resp.ok) throw new Error(`同步生成失败: ${resp.status}`);
         const data = await resp.json();
@@ -634,7 +633,8 @@ export const apiService = {
     // 流式生成报告（SSE 逐字打字机效果）
     streamPigInspectionReport: async (
         pigId: string,
-        onEvent: (event: InspectionStreamEvent) => void
+        onEvent: (event: InspectionStreamEvent) => void,
+        traceId?: string
     ) => {
         // --- Mock 模式下的流模拟逻辑 ---
         if (!USE_REAL_API) {
@@ -659,7 +659,7 @@ export const apiService = {
         const resp = await fetch(`${baseUrl}/inspection/generate/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pig_id: pigId })
+            body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
         });
 
         if (!resp.ok || !resp.body) throw new Error(`流式链接建立失败: ${resp.status}`);
