@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -37,6 +38,7 @@ class CacheEntry:
 _CACHE: dict[str, CacheEntry] = {}
 _CACHE_LOCK = Lock()
 _ORCHESTRATOR: Optional[MultiAgentOrchestrator] = None
+SIMULATION_AGENT_TIMEOUT_SECONDS = 35
 
 
 def get_orchestrator() -> MultiAgentOrchestrator:
@@ -56,8 +58,9 @@ class AgentSimulationService:
         1. 数据归一化：标准化输入事件格式。
         2. 异常评估：基于预设阈值检查生理及环境指标。
         3. 缓存检测：实现重复事件去重，优化处理效率。
-        4. 智能体研判：分发任务至智能体进行深度决策。
-        5. 兜底发布：针对未自动触发的告警执行强制发布逻辑。
+        4. 强制模式检测：如果 force_mode 为 True，跳过智能体研判，直接执行告警。
+        5. 智能体研判：分发任务至智能体进行深度决策。
+        6. 兜底发布：针对未自动触发的告警执行强制发布逻辑。
         """
         thresholds = event.thresholds or SimulationThresholds()
         normalized = self._normalize_event(event)
@@ -89,40 +92,98 @@ class AgentSimulationService:
                 metadata={"mode": "cache_deduplicated"},
             )
 
-        prompt = self._build_agent_prompt(normalized, findings)
-        context = AgentContext(
-            user_id="simulation_ingest",
-            user_input=prompt,
-            chat_history=[],
-            metadata={
-                "source": "simulation_ingest",
-                "cache_key": cache_key,
-                "event": normalized,
-                "findings": findings,
-            },
-            client_id=f"simulation_{hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:12]}",
-        )
+        # 准备初始结果变量
+        worker_name = "direct_simulation"
+        analysis = "Simulation triggered via force mode, skipping agent orchestrator."
+        published_alert = False
+        published_alert_id = None
+        alert_payload = None
+        metadata = {"simulation": True}
 
-        result = await get_orchestrator().execute(context)
-        published_alert, published_alert_id, alert_payload = self._extract_alert_payload(result.tool_outputs or [])
+        # 如果不是强制模式，走智能体流程
+        if not event.force_mode:
+            prompt = self._build_agent_prompt(normalized, findings)
+            # 使用更稳定的 client_id，方便前端追踪
+            # 如果 event 中将来有 client_id 则使用，否则使用 hash
+            client_id = f"simulation_{hashlib.md5(cache_key.encode('utf-8')).hexdigest()[:8]}"
+            
+            context = AgentContext(
+                user_id="simulation_ingest",
+                user_input=prompt,
+                chat_history=[],
+                metadata={
+                    "source": "simulation_ingest",
+                    "cache_key": cache_key,
+                    "event": normalized,
+                    "findings": findings,
+                },
+                client_id=client_id,
+            )
+
+            try:
+                result = await asyncio.wait_for(
+                    get_orchestrator().execute(context),
+                    timeout=SIMULATION_AGENT_TIMEOUT_SECONDS,
+                )
+                worker_name = result.worker_name or worker_name
+                analysis = result.answer or analysis
+                metadata = result.metadata or metadata
+                published_alert, published_alert_id, alert_payload = self._extract_alert_payload(result.tool_outputs or [])
+                if not result.success:
+                    logger.warning(
+                        "Simulation agent execution failed, fallback will publish alert. worker=%s error=%s",
+                        worker_name,
+                        result.error,
+                    )
+                    metadata = {
+                        **(metadata or {}),
+                        "simulation_agent_failed": True,
+                        "simulation_agent_error": result.error,
+                    }
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Simulation agent execution timed out after %s seconds, fallback publish_alert will be used.",
+                    SIMULATION_AGENT_TIMEOUT_SECONDS,
+                )
+                worker_name = "simulation_timeout_fallback"
+                analysis = (
+                    f"智能体分析在 {SIMULATION_AGENT_TIMEOUT_SECONDS} 秒内未完成，"
+                    "系统已自动切换为兜底告警发布流程。"
+                )
+                metadata = {
+                    **(metadata or {}),
+                    "simulation_agent_timeout": True,
+                    "simulation_agent_timeout_seconds": SIMULATION_AGENT_TIMEOUT_SECONDS,
+                }
+            except Exception as e:
+                logger.error("Simulation agent execution crashed, fallback publish_alert will be used: %s", e, exc_info=True)
+                worker_name = "simulation_exception_fallback"
+                analysis = f"智能体分析执行异常，系统已自动切换为兜底告警发布流程：{e}"
+                metadata = {
+                    **(metadata or {}),
+                    "simulation_agent_exception": True,
+                    "simulation_agent_error": str(e),
+                }
         
-        # 如果agent没有调用publish_alert，强制调用它
-        if not published_alert:
-            logger.warning(f"Agent {result.worker_name} 未调用 publish_alert，强制调用")
+        # 如果是强制模式或者 agent 没发告警，执行兜底发布
+        if event.force_mode or not published_alert:
+            if not event.force_mode:
+                logger.warning(f"Agent {worker_name} 未调用 publish_alert，执行兜底逻辑")
+            
             alert_type = self._derive_alert_type(normalized, findings)
             risk = self._derive_risk(normalized, findings)
             announcement = normalized.get("announcement_text") or self._build_announcement(normalized, alert_type, risk)
             
             force_payload = {
-                "pigId": normalized.get("pig_id"),
-                "area": normalized.get("area"),
+                "pigId": normalized.get("pig_id") or "SIM-PIG-001",
+                "area": normalized.get("area") or "实验区A",
                 "type": alert_type,
                 "risk": risk,
                 "timestamp": normalized.get("timestamp"),
                 "announcementText": announcement,
             }
             
-            # 调用publish_alert工具
+            # 调用 publish_alert 工具
             from v1.logic.bot_tools import tool_publish_alert
             try:
                 alert_result = await tool_publish_alert(json.dumps(force_payload, ensure_ascii=False))
@@ -132,23 +193,24 @@ class AgentSimulationService:
                     alert_payload = alert_data.get("alert")
                     if isinstance(alert_payload, dict):
                         published_alert_id = alert_payload.get("id")
-                    logger.info(f"强制调用 publish_alert 成功，alert_id={published_alert_id}")
+                    logger.info(f"模拟报警发布成功，alert_id={published_alert_id}")
             except Exception as e:
-                logger.error(f"强制调用 publish_alert 失败: {e}")
+                logger.error(f"模拟报警发布失败: {e}")
         
-        self._update_cache(cache_key, fingerprint, result.worker_name, result.answer, published_alert_id)
+        self._update_cache(cache_key, fingerprint, worker_name, analysis, published_alert_id)
 
         return SimulationIngestResponse(
             abnormal=True,
             cacheKey=cache_key,
             findings=findings,
-            route=result.worker_name,
-            analysis=result.answer,
+            route=worker_name,
+            analysis=analysis,
             publishedAlert=published_alert,
             publishedAlertId=published_alert_id,
             alert=alert_payload,
-            metadata=result.metadata,
+            metadata=metadata,
         )
+
 
     def _normalize_event(self, event: SimulatedAlertEvent) -> dict[str, Any]:
         raw = event.model_dump(by_alias=False, exclude_none=True)

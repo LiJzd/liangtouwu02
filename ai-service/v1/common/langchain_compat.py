@@ -13,15 +13,15 @@ try:
         from langchain_core.callbacks import BaseCallbackHandler
         from langchain_core.prompts import PromptTemplate
         from langchain_core.tools import Tool as LCTool
-        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, AIMessageChunk
         from langchain_core.language_models.chat_models import BaseChatModel
-        from langchain_core.outputs import ChatResult, ChatGeneration
+        from langchain_core.outputs import ChatResult, ChatGeneration, ChatGenerationChunk
     except (ImportError, ModuleNotFoundError):
         BaseCallbackHandler = object
         PromptTemplate = LCTool = None
-        AIMessage = HumanMessage = SystemMessage = ToolMessage = None
+        AIMessage = HumanMessage = SystemMessage = ToolMessage = AIMessageChunk = None
         BaseChatModel = None
-        ChatResult = ChatGeneration = None
+        ChatResult = ChatGeneration = ChatGenerationChunk = None
 
     # 2. 尝试导入执行器
     try:

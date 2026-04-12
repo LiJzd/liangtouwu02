@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime
 from typing import AsyncGenerator
 
@@ -14,6 +15,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
+logger = logging.getLogger("agent_debug")
 
 # 全局调试事件队列（生产环境应使用 Redis Pub/Sub）
 _debug_queues: dict[str, asyncio.Queue] = {}
@@ -44,12 +46,14 @@ async def push_debug_event(event_type: str, data: dict, client_id: str = "defaul
     }
     try:
         # 非阻塞推送，队列满时丢弃旧事件
+        logger.info(f"[SSE Push] Client={client_id} Type={event_type}")
         queue.put_nowait(event)
     except asyncio.QueueFull:
         # 队列满时移除最旧的事件
         try:
             queue.get_nowait()
             queue.put_nowait(event)
+            logger.info(f"[SSE Push] Queue Full, replaced oldest event for Client={client_id}")
         except Exception:
             pass
 

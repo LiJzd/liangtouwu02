@@ -6,10 +6,10 @@ import json
 import logging
 import os
 import re
-import threading
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
 from v1.common.config import get_settings
+from v1.logic.agent_debug_controller import push_debug_event
 
 logger = logging.getLogger("central_agent")
 
@@ -87,12 +87,15 @@ from langchain_core.callbacks import AsyncCallbackHandler
 class RichTraceHandler(AsyncCallbackHandler):
     """这个类主要负责把 Agent 的“内心戏”用漂亮的方式打印出来，顺便同步给前端调试看。"""
 
-    def __init__(self, client_id: str = "default", agent_name: str = "Agent"):
+    def __init__(self, client_id: str = "default", agent_name: str = "Agent", enable_filter: bool = True):
         super().__init__()
         self.client_id = client_id
         self.agent_name = agent_name
+        self.enable_filter = enable_filter
+        self._streaming_final_answer = not enable_filter # 如果禁用了过滤，默认就处于推送状态
+        self._token_buffer = ""
 
-    async def on_agent_action(self, action, **kwargs):  # type: ignore[override]
+    async def on_agent_action(self, action, **kwargs: Any) -> Any:
         """当 Agent 决定要做啥动作（调啥工具）的时候，就会触发这里。"""
         tool_name = getattr(action, "tool", "unknown")
         tool_input = getattr(action, "tool_input", "")
@@ -119,92 +122,142 @@ class RichTraceHandler(AsyncCallbackHandler):
             except Exception:
                 pass # 解析失败则保持原样
             
-            from v1.logic.agent_debug_controller import push_debug_event
             await push_debug_event("action", {
                 "tool": tool_name,
                 "input": clean_input,
                 "thought": thought or "正在进行方案决策..."
             }, self.client_id, agent=self.agent_name, status="思索中")
-        except (RuntimeError, Exception):
+        except Exception:
             pass
 
-        
-        if not HAS_RICH or not console:
-            return
-        
-        content = Text()
-        if thought:
-            content.append("[Thought]: ", style="bold green")
-            content.append(f"{thought}\n", style="white")
-        content.append("[Action]: ", style="bold cyan")
-        content.append(f"{tool_name}\n", style="cyan")
-        content.append("📝 参数: ", style="bold yellow")
-        content.append(str(tool_input), style="yellow")
-        
-        console.print(Panel(
-            content,
-            title=f"[bold magenta][{self.agent_name} 思维链][/]",
-            border_style="magenta",
-            expand=False
-        ))
+        if HAS_RICH and console:
+            content = Text()
+            if thought:
+                content.append("[Thought]: ", style="bold green")
+                content.append(f"{thought}\n", style="white")
+            content.append("[Action]: ", style="bold cyan")
+            content.append(f"{tool_name}\n", style="cyan")
+            content.append("📝 参数: ", style="bold yellow")
+            content.append(str(tool_input), style="yellow")
+            
+            console.print(Panel(
+                content,
+                title=f"[bold magenta][{self.agent_name} 思维链][/]",
+                border_style="magenta",
+                expand=False
+            ))
 
-    def on_tool_start(self, serialized, input_str, **kwargs):  # type: ignore[override]
-        """准备开始调用工具了。"""
-        name = (serialized or {}).get("name", "tool")
-        
-        import logging
-        logger = logging.getLogger("central_agent")
-        logger.info(f"on_tool_start 被调用: {name}")
-        # 不再向控制台打印工具输入的原始数据，以保持终端整洁
+    async def on_llm_start(self, serialized, prompts, **kwargs):
+        """每一轮 LLM 调用开始前，重置流式过滤状态。"""
+        self._streaming_final_answer = not self.enable_filter
+        self._token_buffer = ""
 
-    def on_tool_end(self, output, **kwargs):  # type: ignore[override]
-        """工具干完活儿返回结果后，跑这里处理一下。"""
-        import logging
-        logger = logging.getLogger("central_agent")
-        logger.info(f"on_tool_end 被调用，输出长度: {len(str(output))}")
-        
-        # 推送到 SSE 调试流
+    async def on_tool_end(self, output, **kwargs):
+        """工具干完活儿返回结果后，推送观测结果。"""
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._push_event("observation", {
+            await push_debug_event("observation", {
                 "output": str(output)[:1000]
-            }, status="工作中"))
-        except (RuntimeError, Exception):
+            }, self.client_id, agent=self.agent_name, status="工作中")
+        except Exception:
             pass
 
-        # 不再向控制台打印带有完整数据的观测结果，避免控制台刷屏
+        if HAS_RICH and console:
+            console.print(Panel(
+                Text(str(output)[:500] + ("..." if len(str(output)) > 500 else ""), style="italic"),
+                title=f"[bold blue][{self.agent_name} 观测][/]",
+                border_style="blue",
+                expand=False
+            ))
 
-    async def on_agent_finish(self, finish, **kwargs):  # type: ignore[override]
+    async def on_agent_finish(self, finish, **kwargs: Any) -> Any:
         """Agent 搞定了，给出一个最终结论。"""
         output = getattr(finish, "return_values", {}).get("output", "")
         
         # 推送到 SSE 调试流
         try:
-            from v1.logic.agent_debug_controller import push_debug_event
             await push_debug_event("final_answer", {
                 "answer": str(output)
             }, self.client_id, agent=self.agent_name, status="决策完成")
-        except (RuntimeError, Exception):
+        except Exception:
             pass
 
-        
-        if not HAS_RICH or not console:
+        if HAS_RICH and console:
+            console.print(Panel(
+                Text(str(output), style="bold white"),
+                title=f"[bold green][{self.agent_name} 结论][/]",
+                border_style="green",
+                expand=False
+            ))
+
+    async def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        """当 LLM 产出新的 Token 时，实时推送给前端（带过滤逻辑）。"""
+        if not token:
             return
+
+        # 1. 如果已经进入最终答案阶段，直接推送
+        if self._streaming_final_answer:
+            try:
+                await push_debug_event("final_answer_chunk", {
+                    "text": token
+                }, self.client_id, agent=self.agent_name)
+            except Exception:
+                pass
+            return
+
+        # 2. 累加到缓冲区并检测标记
+        self._token_buffer += token
         
-        console.print(Panel(
-            Text(str(output), style="bold white"),
-            title=f"[bold green][{self.agent_name} 结论][/]",
-            border_style="green",
-            expand=False
-        ))
+        # 使用正则进行模糊匹配，支持中英文标识
+        patterns = [
+            r"(?i)Final\s*Answer\s*[:：]",
+            r"最终回答\s*[:：]",
+            r"结论\s*[:：]",
+            r"(?i)Conclusion\s*:",
+            r"(?i)Answer\s*:"
+        ]
+        
+        matched_pattern = None
+        for p in patterns:
+            match = re.search(p, self._token_buffer)
+            if match:
+                matched_pattern = match.group(0)
+                break
+        
+        # 情况 A: 匹配到了结论标识
+        if matched_pattern:
+            self._streaming_final_answer = True
+            parts = self._token_buffer.split(matched_pattern, 1)
+            if len(parts) > 1:
+                answer_part = parts[1]
+                if answer_part:
+                    try:
+                        # 只推送标识符之后的内容
+                        await push_debug_event("final_answer_chunk", {
+                            "text": answer_part.lstrip()
+                        }, self.client_id, agent=self.agent_name)
+                    except Exception:
+                        pass
+            self._token_buffer = "" # 清空，节省内存
+            return
+
+        # 情况 B: 缓冲区溢出保护（缩短到 200 字符还没检测到结论，强制开启流式显示）
+        if len(self._token_buffer) > 200:
+            logger.warning(f"[{self.agent_name}] 缓冲区溢出 (200 chars)，强制开启流式显示。")
+            self._streaming_final_answer = True
+            try:
+                await push_debug_event("final_answer_chunk", {
+                    "text": self._token_buffer
+                }, self.client_id, agent=self.agent_name)
+            except Exception:
+                pass
+            self._token_buffer = ""
 
     async def _push_event(self, event_type: str, data: dict, status: str = None):
-        """推送事件到调试流"""
+        """推送辅助事件到调试流"""
         try:
-            from v1.logic.agent_debug_controller import push_debug_event
             await push_debug_event(event_type, data, self.client_id, agent=self.agent_name, status=status)
         except Exception:
-            pass  # 调试流失败不影响主流程
+            pass
 
 
 def _get_llm_config() -> Tuple[str, str, str]:

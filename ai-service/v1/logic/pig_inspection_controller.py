@@ -107,9 +107,9 @@ async def _run_growth_curve_via_agent(pig_id: str, trace_id: Optional[str] = Non
     return answer
 
 
-async def _run_briefing_via_agent() -> str:
+async def _run_briefing_via_agent(trace_id: Optional[str] = None) -> str:
     """调用智能体调度器生成每日养殖简报。"""
-    client_id = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    client_id = trace_id or f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     context = AgentContext(
         user_id="briefing_system",
         user_input=_build_briefing_intent(),
@@ -160,11 +160,43 @@ async def generate_inspection_report(request: InspectionRequest):
 @router.post("/generate/stream", tags=["Inspection"])
 async def generate_inspection_report_stream(request: InspectionRequest):
     """流式生成生长曲线分析报告（SSE）。"""
+    trace_id = request.trace_id or f"growth_curve_{request.pig_id}_{datetime.now().strftime('%H%M%S')}"
+    
     async def _gen():
         try:
-            yield _fmt_sse("status", {"message": "Routing to GrowthCurve Specialist..."})
-            report = await _run_growth_curve_via_agent(request.pig_id, trace_id=request.trace_id)
-            if not report or report.startswith("error:"):
+            from v1.logic.agent_debug_controller import get_or_create_queue, cleanup_queue
+            queue = await get_or_create_queue(trace_id)
+            
+            # 开启异步任务执行业务逻辑
+            task = asyncio.create_task(_run_growth_curve_via_agent(request.pig_id, trace_id=trace_id))
+            
+            yield _fmt_sse("status", {"message": "正在路由至生长曲线专家..."})
+            
+            # 监听队列中的事件并转发
+            full_report = ""
+            while not task.done() or not queue.empty():
+                try:
+                    # 获取事件，带较短超时以便检查 task 状态
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    
+                    if event["type"] == "final_answer_chunk":
+                        # 转发令牌
+                        text = event["data"].get("text", "")
+                        full_report += text
+                        yield _fmt_sse("chunk", {"text": text})
+                    elif event["type"] == "error":
+                        yield _fmt_sse("error", {
+                            "code": 500, "message": "分析失败",
+                            "detail": event["data"].get("message"),
+                            "pig_id": request.pig_id,
+                        })
+                    # 其他中间过程可选转发，保持前端兼容性暂不全部转发
+                except asyncio.TimeoutError:
+                    continue
+            
+            # 任务完成后确保清理
+            report = await task
+            if not full_report and (not report or report.startswith("error:")):
                 yield _fmt_sse("error", {
                     "code": 500, "message": "Analysis failed",
                     "detail": report or "Empty response",
@@ -172,23 +204,24 @@ async def generate_inspection_report_stream(request: InspectionRequest):
                 })
                 return
             
-            yield _fmt_sse("status", {"message": "Pushing report content..."})
-            chunk_size = 120
-            logger.info("growth_curve: starting stream delivery for pig_id=%s", request.pig_id)
-            
-            for i in range(0, len(report), chunk_size):
-                chunk = report[i: i + chunk_size]
-                yield _fmt_sse("chunk", {"text": chunk})
-                await asyncio.sleep(0.01)
-                
+            # 如果流中没有收到 chunk（例如非 LangChain 降级路径），则进行最后的一口气补偿
+            if not full_report:
+                yield _fmt_sse("status", {"message": "正在同步报告帧..."})
+                chunk_size = 100
+                for i in range(0, len(report), chunk_size):
+                    yield _fmt_sse("chunk", {"text": report[i:i+chunk_size]})
+                    await asyncio.sleep(0.01)
+
             yield _fmt_sse("done", {
                 "code": 200, "message": "Stream completed",
                 "pig_id": request.pig_id,
                 "timestamp": datetime.now().isoformat(),
             })
+            
         except Exception as exc:
+            logger.error(f"Stream generation error: {exc}")
             yield _fmt_sse("error", {
-                "code": 500, "message": "Algorithm node unavailable",
+                "code": 500, "message": "算法节点不可用",
                 "detail": str(exc),
                 "pig_id": request.pig_id,
             })
@@ -243,32 +276,57 @@ async def generate_farm_briefing():
 @router.post("/briefing/stream", tags=["Briefing"])
 async def generate_farm_briefing_stream():
     """流式生成全场养殖每日简报（SSE）。"""
+    trace_id = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
     async def _gen():
         try:
-            yield _fmt_sse("status", {"message": "Routing to Briefing Specialist..."})
-            report = await _run_briefing_via_agent()
-            if not report or report.startswith("error:"):
+            from v1.logic.agent_debug_controller import get_or_create_queue, cleanup_queue
+            queue = await get_or_create_queue(trace_id)
+            
+            # 开启异步任务，并传入相同的 trace_id
+            task = asyncio.create_task(_run_briefing_via_agent(trace_id=trace_id))
+            
+            yield _fmt_sse("status", {"message": "正在路由至简报分析专家..."})
+            
+            full_report = ""
+            while not task.done() or not queue.empty():
+                try:
+                    # 轮询获取事件
+                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    
+                    if event["type"] == "final_answer_chunk":
+                        text = event["data"].get("text", "")
+                        full_report += text
+                        yield _fmt_sse("chunk", {"text": text})
+                    elif event["type"] == "error":
+                        yield _fmt_sse("error", {
+                            "code": 500, "message": "简报生成失败", "detail": event["data"].get("message"),
+                        })
+                except asyncio.TimeoutError:
+                    continue
+            
+            # 最终补偿
+            report = await task
+            if not full_report and (not report or report.startswith("error:")):
                 yield _fmt_sse("error", {
                     "code": 500, "message": "Briefing failed",
                     "detail": report or "Empty response",
                 })
                 return
             
-            yield _fmt_sse("status", {"message": "Pushing briefing content..."})
-            chunk_size = 80
-            logger.info("briefing: starting stream delivery, report_len=%d", len(report))
-            
-            for i in range(0, len(report), chunk_size):
-                chunk = report[i: i + chunk_size]
-                yield _fmt_sse("chunk", {"text": chunk})
-                await asyncio.sleep(0.01)
+            if not full_report:
+                yield _fmt_sse("status", {"message": "正在同步简报帧..."})
+                chunk_size = 80
+                for i in range(0, len(report), chunk_size):
+                    yield _fmt_sse("chunk", {"text": report[i:i+chunk_size]})
+                    await asyncio.sleep(0.01)
                 
-            logger.info("briefing: stream delivery completed")
             yield _fmt_sse("done", {
                 "code": 200, "message": "简报流传输完成",
                 "timestamp": datetime.now().isoformat(),
             })
         except Exception as exc:
+            logger.error(f"Briefing stream error: {exc}")
             yield _fmt_sse("error", {
                 "code": 500, "message": "算法节点不可用", "detail": str(exc),
             })

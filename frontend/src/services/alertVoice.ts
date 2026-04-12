@@ -9,6 +9,15 @@ interface AlertBroadcastEvent {
   alert: Alert;
 }
 
+export interface PigBotCachedAlert {
+  cacheKey: string;
+  eventId: string;
+  spokenText: string;
+  alert: Alert;
+  receivedAt: number;
+  consumed: boolean;
+}
+
 export const alertVoiceState = reactive({
   connected: false,
   speaking: false,
@@ -21,6 +30,46 @@ export const alertVoiceState = reactive({
 
 const queue: AlertBroadcastEvent[] = [];
 const seenEventIds = new Set<string>();
+const PIGBOT_ALERT_CACHE_STORAGE_KEY = 'liangtouwu-pigbot-alert-cache';
+const PIGBOT_ALERT_CACHE_LIMIT = 50;
+const pigBotAlertCache: PigBotCachedAlert[] = loadPigBotAlertCache();
+
+export function buildPigBotAlertCacheKey(alert: Alert) {
+  return `${String(alert.id ?? 'unknown')}-${alert.timestamp ?? 'unknown'}`;
+}
+
+export function consumePendingPigBotAlerts(): PigBotCachedAlert[] {
+  const pendingAlerts = pigBotAlertCache
+    .filter((item) => !item.consumed)
+    .reverse()
+    .map((item) => ({
+      ...item,
+      alert: { ...item.alert },
+    }));
+
+  if (pendingAlerts.length === 0) {
+    return pendingAlerts;
+  }
+
+  pigBotAlertCache.forEach((item) => {
+    if (!item.consumed) {
+      item.consumed = true;
+    }
+  });
+  persistPigBotAlertCache();
+
+  return pendingAlerts;
+}
+
+export function markPigBotAlertAsConsumed(cacheKey: string) {
+  const target = pigBotAlertCache.find((item) => item.cacheKey === cacheKey);
+  if (!target || target.consumed) {
+    return;
+  }
+
+  target.consumed = true;
+  persistPigBotAlertCache();
+}
 
 let started = false;
 let userUnlockedAudio = false;
@@ -102,6 +151,78 @@ export function stopAlertVoiceListener() {
   alertVoiceState.connected = false;
   alertVoiceState.speaking = false;
   alertVoiceState.pendingCount = 0;
+}
+
+function loadPigBotAlertCache(): PigBotCachedAlert[] {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const rawCache = window.sessionStorage.getItem(PIGBOT_ALERT_CACHE_STORAGE_KEY);
+    if (!rawCache) {
+      return [];
+    }
+
+    const parsed = JSON.parse(rawCache);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item): item is PigBotCachedAlert => {
+        return Boolean(item && typeof item.cacheKey === 'string' && item.alert);
+      })
+      .slice(0, PIGBOT_ALERT_CACHE_LIMIT);
+  } catch (error) {
+    console.warn('[AlertVoice] Failed to restore PigBot alert cache:', error);
+    return [];
+  }
+}
+
+function persistPigBotAlertCache() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      PIGBOT_ALERT_CACHE_STORAGE_KEY,
+      JSON.stringify(pigBotAlertCache.slice(0, PIGBOT_ALERT_CACHE_LIMIT)),
+    );
+  } catch (error) {
+    console.warn('[AlertVoice] Failed to persist PigBot alert cache:', error);
+  }
+}
+
+function cachePigBotAlert(payload: AlertBroadcastEvent) {
+  const cacheKey = buildPigBotAlertCacheKey(payload.alert);
+  const existing = pigBotAlertCache.find((item) => item.cacheKey === cacheKey);
+
+  if (existing) {
+    existing.eventId = payload.eventId;
+    existing.spokenText = payload.spokenText;
+    existing.alert = payload.alert;
+    existing.receivedAt = Date.now();
+    persistPigBotAlertCache();
+    return existing;
+  }
+
+  pigBotAlertCache.unshift({
+    cacheKey,
+    eventId: payload.eventId,
+    spokenText: payload.spokenText,
+    alert: payload.alert,
+    receivedAt: Date.now(),
+    consumed: false,
+  });
+
+  if (pigBotAlertCache.length > PIGBOT_ALERT_CACHE_LIMIT) {
+    pigBotAlertCache.length = PIGBOT_ALERT_CACHE_LIMIT;
+  }
+
+  persistPigBotAlertCache();
+  return pigBotAlertCache[0];
 }
 
 async function drainQueue() {
@@ -330,9 +451,12 @@ function connect() {
         // 限制缓存大小，避免内存泄漏
         if (seenEventIds.size > 1000) {
           const firstId = seenEventIds.values().next().value;
-          seenEventIds.delete(firstId);
+          if (firstId) {
+            seenEventIds.delete(firstId);
+          }
         }
         
+        cachePigBotAlert(payload);
         queue.push(payload);
         alertVoiceState.pendingCount = queue.length;
 

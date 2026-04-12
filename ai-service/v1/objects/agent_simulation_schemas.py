@@ -45,7 +45,9 @@ class SimulatedAlertEvent(BaseModel):
     description: Optional[str] = None
     risk: Optional[str] = None
     announcement_text: Optional[str] = Field(default=None, alias="announcementText")
+    force_mode: bool = Field(default=False, alias="forceMode")
     thresholds: Optional[SimulationThresholds] = None
+
 
 
 class SimulationIngestResponse(BaseModel):

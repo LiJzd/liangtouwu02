@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue';
-import { apiService } from '../api';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { apiService, type Alert } from '../api';
+import {
+  ALERT_RECEIVED_EVENT,
+  buildPigBotAlertCacheKey,
+  consumePendingPigBotAlerts,
+  markPigBotAlertAsConsumed,
+} from '../services/alertVoice';
 
 interface ChatMessage {
   id: string;
@@ -39,6 +45,7 @@ const pendingAudioBlob = ref<Blob | null>(null);
 const audioPreviewUrl = ref<string | null>(null);
 let mediaRecorder: MediaRecorder | null = null;
 let audioChunks: Blob[] = [];
+const handledAlertKeys = new Set<string>();
 
 const removePendingImage = () => {
   pendingImage.value = null;
@@ -52,14 +59,94 @@ const removePendingAudio = () => {
   }
 };
 
+const formatClockTime = () => (
+  new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+);
+
+const getRiskLabel = (risk: Alert['risk']) => {
+  switch (risk) {
+    case 'Critical':
+      return '紧急';
+    case 'High':
+      return '高';
+    case 'Medium':
+      return '中';
+    case 'Low':
+      return '低';
+    default:
+      return risk;
+  }
+};
+
+const buildAlertChatContent = (alert: Alert) => {
+  const announcement = alert.message?.trim()
+    || `猪只 ${alert.pigId} 在 ${alert.area} 区域出现 ${alert.type}，风险等级 ${getRiskLabel(alert.risk)}。`;
+
+  return [
+    '收到一条新的报警通知，我已经同步到聊天界面：',
+    announcement,
+    '',
+    `报警编号：#${String(alert.id).padStart(4, '0')}`,
+    `报警时间：${alert.timestamp}`,
+    '如果你需要，我可以继续帮你分析这条报警。'
+  ].join('\n');
+};
+
+const appendAlertMessage = (alert: Alert, cacheKey = buildPigBotAlertCacheKey(alert)) => {
+  if (handledAlertKeys.has(cacheKey)) {
+    return false;
+  }
+
+  handledAlertKeys.add(cacheKey);
+  messages.value.push({
+    id: `alert_${cacheKey}`,
+    role: 'assistant',
+    content: buildAlertChatContent(alert),
+    timestamp: formatClockTime()
+  });
+  return true;
+};
+
+const handleRealtimeAlert = (event: Event) => {
+  const incoming = (event as CustomEvent<Alert>).detail;
+  if (!incoming) {
+    return;
+  }
+
+  const alertKey = buildPigBotAlertCacheKey(incoming);
+  if (appendAlertMessage(incoming, alertKey)) {
+    markPigBotAlertAsConsumed(alertKey);
+    void scrollToBottom();
+  }
+};
+
 // 初始化欢迎语
 onMounted(() => {
   messages.value.push({
     id: Date.now().toString(),
     role: 'assistant',
     content: '你好呀！我是两头乌数字牧场的 PigBOT 专属智能助理 🐽。\n任何生猪健康分析、体态辨识问题，都可以发送图片向我咨询！',
-    timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    timestamp: formatClockTime()
   });
+  window.addEventListener(ALERT_RECEIVED_EVENT, handleRealtimeAlert as EventListener);
+
+  let appendedCachedAlert = false;
+  consumePendingPigBotAlerts().forEach(({ alert, cacheKey }) => {
+    appendedCachedAlert = appendAlertMessage(alert, cacheKey) || appendedCachedAlert;
+  });
+
+  if (appendedCachedAlert) {
+    void scrollToBottom();
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener(ALERT_RECEIVED_EVENT, handleRealtimeAlert as EventListener);
+  if (traceCleanup) {
+    traceCleanup();
+    traceCleanup = null;
+  }
+  removePendingAudio();
 });
 
 const scrollToBottom = async () => {
@@ -132,6 +219,22 @@ const handleSend = async () => {
     } else if (event.type === 'final_answer') {
       content = event.data.answer;
       title = '得出结论';
+      
+      // 最终答案同步到聊天框（如果还没同步完整）
+      const assistantMsg = messages.value.find(m => m.id === typingMsgId);
+      if (assistantMsg) {
+        assistantMsg.isTyping = false;
+        assistantMsg.content = content;
+      }
+    } else if (event.type === 'final_answer_chunk') {
+      // 🚀 核心逻辑：流式更新聊天气泡
+      const assistantMsg = messages.value.find(m => m.id === typingMsgId);
+      if (assistantMsg) {
+        assistantMsg.isTyping = false;
+        assistantMsg.content += event.data.text;
+        scrollToBottom();
+      }
+      return; // 不需要推送到右侧追踪面板
     } else if (event.type === 'connected') {
       content = '已连接到 AI 推理引擎，正在进行意图路由...';
       title = '链路就绪';
@@ -195,15 +298,19 @@ const handleSend = async () => {
       { trace_id: traceId }
     );
     
-    messages.value = messages.value.filter(m => m.id !== typingMsgId);
-    
-    messages.value.push({
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: response.reply || '分析完毕，我未获得任何有效诊断结果。',
-      image: response.image ? `data:image/png;base64,${response.image}` : undefined,
-      timestamp: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-    });
+    // 检查是否已经由流式输出了内容
+    const assistantMsg = messages.value.find(m => m.id === typingMsgId);
+    if (assistantMsg) {
+      assistantMsg.isTyping = false;
+      // 如果流式内容为空（例如非流式兜底），则使用响应回复
+      if (!assistantMsg.content) {
+        assistantMsg.content = response.reply || '分析完毕。';
+      }
+      // 更新图片结果（如果有）
+      if (response.image) {
+        assistantMsg.image = `data:image/png;base64,${response.image}`;
+      }
+    }
   } catch (error: any) {
     console.error('Chat Error:', error);
     messages.value = messages.value.filter(m => m.id !== typingMsgId);
