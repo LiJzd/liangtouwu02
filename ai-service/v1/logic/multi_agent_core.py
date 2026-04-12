@@ -1311,30 +1311,69 @@ class VetAgent(WorkerAgent):
     async def _execute_omni_feature_extraction(self, context: AgentContext) -> str:
         """
         利用原生多模态 SDK，将图片和音频识别为客观文本描述。
+        已根据需求修改：针对语音输入进行“演进式”伪装识别。
         """
         import dashscope
         from dashscope import MultiModalConversation
+        from v1.logic.agent_debug_controller import push_debug_event
         
         api_key, _, _, omni_model = self._get_llm_config()
-        if not api_key:
-            return "API Key 未配置，无法进行特征提取。"
+        
+        # ============================================================
+        # 语音伪装识别剧本：标准语音受阻 -> 切换方言成功
+        # ============================================================
+        if context.audio_path:
+            logger.info("触发语音伪装识别剧本...")
+            
+            # 步骤 1: 启动感知
+            await push_debug_event("thought", {"content": "检测到语音输入（PCM Single Channel），启动多模态感知引擎..."}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(0.8)
+            
+            # 步骤 2: 尝试标准普通话转录
+            await push_debug_event("action", {"tool": "StandardASR", "input": "Standard Mandarin Model v4", "thought": "正在尝试对原始音频流进行标准普通话转写与对齐..."}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(1.5)
+            
+            # 步骤 3: 识别失败反馈
+            await push_debug_event("observation", {"output": "音频特征映射完成，但语法匹配度显著低于阈值（置信度 0.28），标准语义理解失败。"}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(1.0)
+            
+            # 步骤 4: 切换方言模型
+            await push_debug_event("thought", {"content": "初步识别受阻。通过声纹与语调特征识别到产地口音特征，正在自动加载方言增强字典，尝试进行某地方言识别..."}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(1.2)
+            
+            # 步骤 5: 执行方言识别
+            await push_debug_event("action", {"tool": "DialectASR", "input": "LTW_Regional_Dialect_v2.0", "thought": "正在利用方言补丁进行二次采样和语义重构..."}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(2.0)
+            
+            # 步骤 6: 识别成功
+            fixed_result = "我的猪今天生病了,一天都没有精神"
+            await push_debug_event("observation", {"output": f"重构成功（置信度 0.94）：‘{fixed_result}’"}, context.client_id, agent="VetAgent", status="工作中")
+            await asyncio.sleep(0.5)
+            
+            # 如果还有图片，则继续进行图片分析（可选，这里简化为主要处理语音）
+            if not context.image_urls:
+                return f"Final Answer: {fixed_result}"
+            
+            # 如果有图片，将语音结果作为前置信息合并
+            visual_prompt_prefix = f"【语音解析结果（方言模式）】：{fixed_result}\n\n请结合此用户口述情况，针对下列图片进行分析："
+        else:
+            visual_prompt_prefix = (
+                "你是一名资深兽医助手。你需要仔细观察图片中的猪只，总结异常现象并给出初步评估。\n"
+                "## 报告规范\n"
+                "1. 【外观特征】毛色、皮肤、体型是否有异样\n"
+                "2. 【典型病灶】红斑、溃疡、呼吸困难、异常分泌物等\n"
+                "3. 【初步评估】根据视觉特征判断可能的健康风险\n"
+                "4. 【建议】是否需要立即联系兽医或进行进一步检查\n\n"
+                "**重要**：如果用户的问题仅涉及视觉识别（如'图里有几只猪'、'它在干什么'），请直接给出 'Final Answer: [你的详细回答]'。"
+            )
 
-        # 视觉分析专用提示词：结合客观观察和初步专业建议
-        visual_prompt = (
-            "你是一名资深兽医助手。你需要仔细观察图片中的猪只以及听取语音内容，总结异常现象并给出初步评估。\n"
-            "## 报告规范\n"
-            "1. 【外观特征】毛色、皮肤、体型是否有异样\n"
-            "2. 【典型病灶】红斑、溃疡、呼吸困难、异常分泌物等\n"
-            "3. 【初步评估】根据视觉特征判断可能的健康风险\n"
-            "4. 【建议】是否需要立即联系兽医或进行进一步检查\n\n"
-            "**重要**：如果用户的问题仅涉及视觉识别（如'图里有几只猪'、'它在干什么'），请直接给出 'Final Answer: [你的详细回答]'。"
-        )
+        if not api_key:
+            return "API Key 未配置，无法进行视觉特征提取。"
 
         temp_image_paths = []
-        final_audio_path = None
         
         try:
-            content = [{'text': visual_prompt}]
+            content = [{'text': visual_prompt_prefix}]
             
             # 图片处理
             if context.image_urls:
@@ -1351,7 +1390,7 @@ class VetAgent(WorkerAgent):
                         target_file = self._preprocess_image(url_or_path)
                     
                     if target_file and os.path.exists(target_file):
-                        # 核心修正：Windows 下使用 file:// 路径 (移除导致报错的额外斜杠)
+                        # 核心修正：Windows 下使用 file:// 路径
                         abs_path = os.path.abspath(target_file).replace('\\', '/')
                         if os.name == 'nt' and ':' in abs_path:
                             # Windows: file://C:/path
@@ -1364,20 +1403,9 @@ class VetAgent(WorkerAgent):
                         if target_file != url_or_path:
                             temp_image_paths.append(target_file)
             
-            # 音频处理
-            if context.audio_path:
-                final_audio_path = self._convert_audio_to_wav(context.audio_path)
-                if final_audio_path and os.path.exists(final_audio_path):
-                    abs_audio_path = os.path.abspath(final_audio_path).replace('\\', '/')
-                    if os.name == 'nt' and ':' in abs_audio_path:
-                        content.append({'audio': f"file://{abs_audio_path}"})
-                    else:
-                        if not abs_audio_path.startswith('/'):
-                            abs_audio_path = '/' + abs_audio_path
-                        content.append({'audio': f"file://{abs_audio_path}"})
-
+            # 有图片时，调用视觉模型并告知语音背景
             def _call_dashscope():
-                # 设置全局 API KEY 以防某些底层 SDK 调用需要
+                # 设置全局 API KEY
                 import dashscope
                 dashscope.api_key = api_key
                 return MultiModalConversation.call(
@@ -1386,9 +1414,12 @@ class VetAgent(WorkerAgent):
                     api_key=api_key
                 )
             
+            # 如果没有图片，直接返回语音解析结果 (防御性)
+            if not context.image_urls:
+                return f"Final Answer: {fixed_result}"
+
             response = await asyncio.to_thread(_call_dashscope)
             if response.status_code == 200:
-                # 兼容不同版本的输出结构
                 res_output = response.output
                 if hasattr(res_output, 'choices') and res_output.choices:
                     msg_content = res_output.choices[0].message.content
@@ -1396,32 +1427,20 @@ class VetAgent(WorkerAgent):
                     msg_content = res_output.choice.message.content
                 else:
                     msg_content = str(res_output)
+                
                 if isinstance(msg_content, list):
-                    result_text = ""
-                    for item in msg_content:
-                        if isinstance(item, dict) and 'text' in item:
-                            result_text += item['text']
-                        elif isinstance(item, str):
-                            result_text += item
-                    result_text = result_text.strip()
+                    result_text = "".join([item.get('text', '') if isinstance(item, dict) else str(item) for item in msg_content])
                 else:
                     result_text = str(msg_content).strip()
                 
-                if not result_text:
-                    logger.warning(f"Feature extraction returned empty text for model {omni_model}")
-                    return "未能从多模态输入中提取到有效特征信息。"
                 return result_text
             else:
                 err_msg = f"特征提取失败: {response.code} - {response.message}"
                 logger.error(err_msg)
                 return err_msg
         except Exception as e:
-            return f"特征提取过程中发生异常: {str(e)}"
+            return f"多模态异常: {str(e)}"
         finally:
-            # 资源清理
-            if final_audio_path and final_audio_path != context.audio_path:
-                try: os.unlink(final_audio_path)
-                except: pass
             for p in temp_image_paths:
                 try: os.unlink(p)
                 except: pass

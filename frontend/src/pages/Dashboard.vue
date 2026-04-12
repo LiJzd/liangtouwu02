@@ -135,7 +135,9 @@ function initMultiGasChart(el: HTMLElement) {
         <!-- Main Metric 1 -->
         <div class="lg:col-span-2 bg-white/95 p-8 rounded-xl relative overflow-hidden flex flex-col justify-between h-56 border border-emerald-200 shadow-sm hover:shadow-md transition-all">
           <div class="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <span class="material-symbols-outlined text-[100px] text-emerald-900">pets</span>
+            <svg viewBox="0 0 24 24" class="w-[100px] h-[100px] text-emerald-900" fill="currentColor">
+              <path d="M12,4C6.48,4,2,7.58,2,12s4.48,8,10,8s10-3.58,10-8S17.52,4,12,4z M8.5,14c-0.83,0-1.5-0.67-1.5-1.5S7.67,11,8.5,11 S10,11.67,10,12.5S9.33,14,8.5,14z M15.5,14c-0.83,0-1.5-0.67-1.5-1.5s0.67-1.5,1.5-1.5s1.5,0.67,1.5,1.5S16.33,14,15.5,14z"/>
+            </svg>
           </div>
           <div class="flex justify-between items-start">
             <div>
