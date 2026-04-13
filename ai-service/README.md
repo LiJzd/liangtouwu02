@@ -79,7 +79,7 @@ MYSQL_DATABASE=liangtowwu
 
 # LLM API
 DASHSCOPE_API_KEY=your_api_key
-DASHSCOPE_MODEL=qwen-plus
+DASHSCOPE_MODEL=qwen3.5-plus
 
 # QQ Bot
 BOT_APP_ID=your_app_id

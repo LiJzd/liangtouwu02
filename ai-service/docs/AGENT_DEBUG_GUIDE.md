@@ -142,7 +142,7 @@ asyncio.run(chat_with_debug())
 # .env 文件
 DASHSCOPE_API_KEY=sk-xxx  # 阿里百炼 API Key
 DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-DASHSCOPE_MODEL=qwen-plus
+DASHSCOPE_MODEL=qwen3.5-plus
 ```
 
 ### 代码配置

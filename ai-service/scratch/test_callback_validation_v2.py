@@ -34,7 +34,7 @@ async def test_agent_executor_validation():
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
     
     llm = DashScopeNativeChat(
-        model="qwen-plus",
+        model="qwen3.5-plus",
         api_key=api_key or "fake-key",
         temperature=0.1
     )

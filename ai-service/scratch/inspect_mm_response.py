@@ -16,7 +16,7 @@ def test_mm_structure():
         
         # Test with incremental_output=True
         it = MultiModalConversation.call(
-            model='qwen-vl-plus', 
+            model='qwen3.5-plus', 
             messages=[
                 {'role': 'system', 'content': system_instructions},
                 {'role': 'user', 'content': content}

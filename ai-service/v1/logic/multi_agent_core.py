@@ -198,7 +198,7 @@ class SupervisorAgent:
         )
 
         try:
-            # 使用快速廉价的模型进行分类
+            # 使用快速模型进行分类
             def _call():
                 dashscope.api_key = self.api_key
                 return Generation.call(

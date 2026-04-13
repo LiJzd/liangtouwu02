@@ -17,7 +17,7 @@ async def test_streaming():
         # or we manually mock it if needed.
         return
 
-    llm = DashScopeNativeChat(model="qwen-max", api_key=api_key, streaming=True)
+    llm = DashScopeNativeChat(model="qwen3.5-plus", api_key=api_key, streaming=True)
     print("Starting stream...")
     async for chunk in llm.astream([HumanMessage(content="你好，请介绍一下你自己。")]):
         print(f"Chunk received: {chunk.content}")

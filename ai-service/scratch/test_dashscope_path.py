@@ -33,7 +33,7 @@ def test_multimodal_path():
         content = [{'image': fmt}, {'text': 'What is in this image?'}]
         try:
             responses = MultiModalConversation.call(
-                model='qwen-vl-plus', # or any other mm model
+                model='qwen3.5-plus', # or any other mm model
                 messages=[{'role': 'user', 'content': content}],
                 api_key=api_key
             )

@@ -14,7 +14,7 @@ def test_mm_minimal():
         content = [{'image': img_url}, {'text': prompt}]
         
         it = MultiModalConversation.call(
-            model='qwen-vl-plus', 
+            model='qwen3.5-plus', 
             messages=[{'role': 'user', 'content': content}],
             stream=True,
             incremental_output=True,
