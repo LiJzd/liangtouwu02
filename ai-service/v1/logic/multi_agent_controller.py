@@ -34,18 +34,29 @@ def get_orchestrator() -> MultiAgentOrchestrator:
     return _orchestrator
 
 
+@router.options("/chat/v2")
+async def chat_v2_preflight(request: Request):
+    """处理浏览器 multipart 请求前的 CORS 预检 (OPTIONS)，返回完整 CORS 响应头。"""
+    from fastapi.responses import Response
+    origin = request.headers.get("origin", "*")
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
+
+
 @router.post("/chat/v2", response_model=AgentChatResponse)
-async def chat_v2(
-    request: Request,
-    audio: Optional[UploadFile] = File(None),
-    images: List[UploadFile] = File(default=[])
-) -> AgentChatResponse:
-    """
-    智能体集群对话接口 (V2) - 增强多模态支持。
-    同时支持 JSON 格式和 Multipart/form-data 格式。
-    """
+async def chat_v2(request: Request) -> AgentChatResponse:
+    """接收 multipart/form-data 或 JSON，手动解析避免 FastAPI 在 OPTIONS 时强制解析 body。"""
     content_type = request.headers.get("content-type", "")
-    
+    audio: Optional[UploadFile] = None
+    images: List[UploadFile] = []
     image_temp_paths = []
     
     if "multipart/form-data" in content_type:
@@ -71,15 +82,23 @@ async def chat_v2(
             image_urls = []
             
         # 处理作为列表上传的图片文件
-        if images:
-            for img in images:
-                if not img.filename: continue
-                suffix = f".{img.filename.split('.')[-1]}" if "." in img.filename else ".jpg"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    tmp.write(await img.read())
-                    image_temp_paths.append(tmp.name)
+        raw_images = form.getlist("images") if hasattr(form, "getlist") else (
+            [form.get("images")] if form.get("images") else []
+        )
+        images = [f for f in raw_images if f and getattr(f, "filename", None)]
+        for img in images:
+            suffix = f".{img.filename.split('.')[-1]}" if "." in img.filename else ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(await img.read())
+                image_temp_paths.append(tmp.name)
+        if image_temp_paths:
             logger.info(f"Received {len(image_temp_paths)} uploaded image files")
-        
+
+        # 从 form 中提取音频文件
+        audio_field = form.get("audio")
+        if audio_field and getattr(audio_field, "filename", None):
+            audio = audio_field
+
         # 将本地临时路径合并到 image_urls 中（Agent 执行时会识别这些本地路径）
         image_urls.extend(image_temp_paths)
         
@@ -120,7 +139,7 @@ async def chat_v2(
         import random
         # 模拟前端上传与转录的初始耗时
         await asyncio.sleep(random.uniform(0.5, 1.2))
-        user_input_text = "我的猪今天生病了,一天都没有精神"
+        user_input_text = "我这只猪今天没精神，生病了"
         logger.info(f"语音输入通过控制器层拦截，固定解析为: {user_input_text}")
     
     # 构建执行上下文
@@ -183,6 +202,26 @@ async def chat_v2(
         reply=result.answer,
         image=result.image,
         metadata=result.metadata
+    )
+
+
+@router.post("/chat/vanilla", response_model=AgentChatResponse)
+async def chat_vanilla(request: Request) -> AgentChatResponse:
+    """
+    基础大模型对话接口 - 仅用于演示对比，不挂载任何工具 (演示编造/幻觉效果)。
+    """
+    payload_data = await request.json()
+    payload = AgentChatRequest(**payload_data)
+    
+    messages_list = [m.model_dump() for m in payload.messages]
+    
+    # 直接调用基础 LLM
+    from v1.logic.central_agent_core import _call_llm
+    reply = _call_llm(messages_list)
+    
+    return AgentChatResponse(
+        reply=reply or "大模型目前由于缺乏实时工具支持，无法回答该细节。",
+        metadata={"mode": "vanilla"}
     )
 
 

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>两头乌 AI 智能体对比演示</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;600;800&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .app-container { min-height: 100vh; display: flex; flex-direction: column; }
+        .demo-grid { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="header-left">
+                <h1>两头乌 AI 演示中心</h1>
+                <p>基于 ReAct 架构的实时推理 vs 传统模型对比</p>
+            </div>
+            <nav class="module-nav">
+                <a href="index.html" class="nav-item active">语义推理中心</a>
+                <a href="growth.html" class="nav-item">生长分析系统</a>
+            </nav>
+        </header>
+
+        <main class="demo-grid">
+            <!-- 左侧：通用大模型 -->
+            <section class="chat-column" id="normal-llm">
+                <div class="column-header">
+                    <span class="status-dot"></span>
+                    <h2>通用大模型</h2>
+                </div>
+                <div class="chat-canvas" id="chat-left">
+                </div>
+            </section>
+
+            <!-- 中间：基础 Agent -->
+            <section class="chat-column" id="basic-agent-col">
+                <div class="column-header">
+                    <span class="status-dot" style="background:#ffaa00; box-shadow:0 0 8px #ffaa00;"></span>
+                    <h2>基础 Agent</h2>
+                </div>
+                <div class="chat-canvas" id="chat-middle">
+                </div>
+            </section>
+
+            <!-- 右侧：React 模板大模型 -->
+            <section class="chat-column" id="react-agent">
+                <div class="column-header">
+                    <span class="status-dot"></span>
+                    <h2>React 模板大模型</h2>
+                </div>
+                <div class="chat-canvas" id="chat-right">
+                </div>
+            </section>
+        </main>
+
+        <footer class="input-area">
+            <div class="input-container">
+                <input type="text" id="user-input" placeholder="" autocomplete="off">
+                <button id="send-btn">
+                    开始演示
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 模拟演示逻辑 -->
+    <script src="js/demo.js"></script>
+</body>
+</html>

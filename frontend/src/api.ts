@@ -244,20 +244,32 @@ const buildMockGrowthCurve = (pigId: string) => {
     const pig = getMockPig(pigId);
     const currentMonth = pig.current_month;
     const currentWeight = pig.current_weight_kg;
-    const endMonth = Math.max(currentMonth, 7);
-    const monthlyGain = currentMonth <= 3 ? 18 : currentMonth === 4 ? 16 : 14;
+
+    // 两头乌 Gompertz 参数：L≈120kg, k=0.28, 拐点 t0≈5.5月
+    const gompertz = (m: number) => 120 * Math.exp(-Math.exp(-0.28 * (m - 5.5)));
+
+    // 以实测体重为锚点平移曲线
+    const offset = currentWeight - gompertz(currentMonth);
+    const endMonth = Math.max(currentMonth + 5, 9);
 
     return Array.from({ length: endMonth - currentMonth + 1 }, (_, index) => {
         const month = currentMonth + index;
-        const status = index === 0 ? '当前' : month === endMonth ? '建议出栏' : '稳步生长';
+        const adjWeight = Math.round((gompertz(month) + offset) * 10) / 10;
+        const gain = index > 0 ? gompertz(month) - gompertz(month - 1) : 0;
+        const status = index === 0 ? '当前'
+            : gain > 12 ? '快速增重'
+            : gain > 8  ? '平稳生长'
+            : gain > 5  ? '增速趋缓'
+            : month === endMonth ? '建议出栏' : '趋近出栏';
 
         return {
             month,
-            weight: Math.round((currentWeight + index * monthlyGain) * 10) / 10,
+            weight: adjWeight,
             status
         };
     });
 };
+
 
 const buildMockPigInspectionReport = (pigId: string) => {
     const pig = getMockPig(pigId);
@@ -471,12 +483,18 @@ export const apiService = {
     // 获取所有生猪列表
     getPigsList: async () => {
         if (USE_REAL_API) {
-            const res = await http.get('/pigs/list');
-            // 处理ApiResponse包装的数据结构
-            if (res.data && res.data.data) {
-                return res.data;
+            try {
+                const res = await http.get('/pigs/list');
+                // 处理ApiResponse包装的数据结构
+                if (res.data && res.data.data) {
+                    return res.data;
+                }
+                return res.data || mockResponse(MOCK_PIGS_LIST);
+            } catch (e) {
+                console.warn('[getPigsList] Java API 不可用，降级到 Mock 数据:', e);
+                await delay(300);
+                return mockResponse(MOCK_PIGS_LIST);
             }
-            return res.data || mockResponse(MOCK_PIGS_LIST);
         }
         await delay(500);
         return mockResponse(MOCK_PIGS_LIST);
@@ -484,31 +502,38 @@ export const apiService = {
 
     /** 获取历史简报列表 */
     getBriefingHistory: async (limit: number = 10) => {
-        if (USE_REAL_API) {
-            const res = await http.get('/briefing/history', { params: { limit } });
-            // 处理ApiResponse包装的数据结构
-            if (res.data && res.data.data) {
-                return res.data.data;
+        const buildMockList = () => {
+            const mockBriefings = [];
+            const today = new Date();
+            for (let i = 0; i < Math.min(limit, 15); i++) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const dateStr = date.toISOString().split('T')[0];
+                mockBriefings.push({
+                    id: 200 - i,
+                    briefingDate: dateStr,
+                    summary: `第${i === 0 ? '今' : i}日简报：全场运行${['平稳', '良好', '正常', '优秀'][i % 4]}，${['无异常', '个别关注', '重点监测', '全面健康'][i % 4]}。`,
+                    content: generateMockBriefingContent(dateStr, i)
+                });
             }
-            return res.data || [];
+            return mockBriefings;
+        };
+        if (USE_REAL_API) {
+            try {
+                const res = await http.get('/briefing/history', { params: { limit } });
+                // 处理ApiResponse包装的数据结构
+                if (res.data && res.data.data) {
+                    return res.data.data;
+                }
+                return res.data || buildMockList();
+            } catch (e) {
+                console.warn('[getBriefingHistory] Java API 不可用，降级到 Mock 数据:', e);
+                await delay(300);
+                return buildMockList();
+            }
         }
         await delay(500);
-        // 生成模拟的历史简报数据
-        const mockBriefings = [];
-        const today = new Date();
-        for (let i = 0; i < Math.min(limit, 15); i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
-            
-            mockBriefings.push({
-                id: 200 - i,
-                briefingDate: dateStr,
-                summary: `第${i === 0 ? '今' : i}日简报：全场运行${['平稳', '良好', '正常', '优秀'][i % 4]}，${['无异常', '个别关注', '重点监测', '全面健康'][i % 4]}。`,
-                content: generateMockBriefingContent(dateStr, i)
-            });
-        }
-        return mockBriefings;
+        return buildMockList();
     },
 
     /** 获取最新一期简报详情 */
@@ -555,8 +580,8 @@ export const apiService = {
      * 注意：此接口生成的简报不会自动入库，入库由 triggerBriefing 负责。
      */
     streamBriefing: async (onEvent: (event: import('./api').BriefingStreamEvent) => void) => {
-        // Mock 模式下模拟流式输出
-        if (!USE_REAL_API) {
+        // Mock 流式输出（公共函数）
+        const runMockStream = async () => {
             onEvent({ event: 'status', data: { message: '正在激活模拟简报链路...' } });
             await delay(600);
             const today = new Date().toISOString().split('T')[0];
@@ -568,46 +593,56 @@ export const apiService = {
                 await delay(30);
             }
             onEvent({ event: 'done', data: { code: 200, message: '简报生成完成', timestamp: new Date().toISOString() } });
+        };
+
+        // Mock 模式下模拟流式输出
+        if (!USE_REAL_API) {
+            await runMockStream();
             return;
         }
 
-        // 真实模式：直连 AI-service 流式端点
-        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
-        const resp = await fetch(`${baseUrl}/inspection/briefing/stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-        });
-        if (!resp.ok || !resp.body) throw new Error(`简报流连接失败: ${resp.status}`);
+        // 真实模式：直连 AI-service 流式端点，失败时 fallback mock
+        try {
+            const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+            const resp = await fetch(`${baseUrl}/inspection/briefing/stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (!resp.ok || !resp.body) throw new Error(`简报流连接失败: ${resp.status}`);
 
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
 
-        const parseBlock = (block: string) => {
-            const lines = block.split('\n');
-            let eventName = 'message';
-            const dataParts: string[] = [];
-            for (const line of lines) {
-                if (line.startsWith('event:')) eventName = line.slice(6).trim();
-                if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+            const parseBlock = (block: string) => {
+                const lines = block.split('\n');
+                let eventName = 'message';
+                const dataParts: string[] = [];
+                for (const line of lines) {
+                    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                    if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+                }
+                if (!dataParts.length) return;
+                try {
+                    const data = JSON.parse(dataParts.join('\n'));
+                    onEvent({ event: eventName as any, data });
+                } catch { /* ignore malformed frames */ }
+            };
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let sep = buffer.indexOf('\n\n');
+                while (sep !== -1) {
+                    parseBlock(buffer.slice(0, sep));
+                    buffer = buffer.slice(sep + 2);
+                    sep = buffer.indexOf('\n\n');
+                }
             }
-            if (!dataParts.length) return;
-            try {
-                const data = JSON.parse(dataParts.join('\n'));
-                onEvent({ event: eventName as any, data });
-            } catch { /* ignore malformed frames */ }
-        };
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let sep = buffer.indexOf('\n\n');
-            while (sep !== -1) {
-                parseBlock(buffer.slice(0, sep));
-                buffer = buffer.slice(sep + 2);
-                sep = buffer.indexOf('\n\n');
-            }
+        } catch (e) {
+            console.warn('[streamBriefing] AI 服务不可用，降级到 Mock 流:', e);
+            await runMockStream();
         }
     },
 
@@ -636,72 +671,80 @@ export const apiService = {
         onEvent: (event: InspectionStreamEvent) => void,
         traceId?: string
     ) => {
-        // --- Mock 模式下的流模拟逻辑 ---
-        if (!USE_REAL_API) {
+        // Mock 流（公共函数）
+        const runMockStream = async () => {
             onEvent({ event: 'status', data: { message: '正在激活模拟认知链路...' } });
             await delay(500);
             const mockReport = buildMockPigInspectionReport(pigId);
             const mockMarkdown = mockReport.report;
             onEvent({ event: 'status', data: { message: '正在构建 Markdown 响应帧...' } });
-
             const chunkSize = 15;
             for (let i = 0; i < mockMarkdown.length; i += chunkSize) {
                 onEvent({ event: 'chunk', data: { text: mockMarkdown.slice(i, i + chunkSize) } });
                 await delay(40);
             }
-
             onEvent({ event: 'done', data: { code: 200, pig_id: pigId, timestamp: mockReport.timestamp } });
+        };
+
+        // --- Mock 模式下的流模拟逻辑 ---
+        if (!USE_REAL_API) {
+            await runMockStream();
             return;
         }
 
-        // --- 真实 API 高级流处理逻辑 ---
-        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
-        const resp = await fetch(`${baseUrl}/inspection/generate/stream`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
-        });
+        // --- 真实 API 高级流处理逻辑（失败时 fallback mock）---
+        try {
+            const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+            const resp = await fetch(`${baseUrl}/inspection/generate/stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
+            });
 
-        if (!resp.ok || !resp.body) throw new Error(`流式链接建立失败: ${resp.status}`);
+            if (!resp.ok || !resp.body) throw new Error(`流式链接建立失败: ${resp.status}`);
 
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
 
-        /** 帧解析函数：识别 SSE 协议中的 event: 和 data: 片段 */
-        const parseBlock = (block: string) => {
-            const lines = block.split('\n');
-            let eventName = 'message';
-            const dataParts: string[] = [];
+            /** 帧解析函数：识别 SSE 协议中的 event: 和 data: 片段 */
+            const parseBlock = (block: string) => {
+                const lines = block.split('\n');
+                let eventName = 'message';
+                const dataParts: string[] = [];
 
-            for (const line of lines) {
-                if (line.startsWith('event:')) eventName = line.slice(6).trim();
-                if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+                for (const line of lines) {
+                    if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                    if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+                }
+
+                if (!dataParts.length) return;
+
+                try {
+                    const data = JSON.parse(dataParts.join('\n'));
+                    onEvent({ event: eventName as any, data });
+                } catch (e) {
+                    console.error("Malformed SSE frame:", e);
+                }
+            };
+
+            // 循环读取数据流块
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                // SSE 协议规定双换行符为帧分隔符
+                let sep = buffer.indexOf('\n\n');
+                while (sep !== -1) {
+                    parseBlock(buffer.slice(0, sep));
+                    buffer = buffer.slice(sep + 2);
+                    sep = buffer.indexOf('\n\n');
+                }
             }
-
-            if (!dataParts.length) return;
-
-            try {
-                const data = JSON.parse(dataParts.join('\n'));
-                onEvent({ event: eventName as any, data });
-            } catch (e) {
-                console.error("Malformed SSE frame:", e);
-            }
-        };
-
-        // 循环读取数据流块
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            // SSE 协议规定双换行符为帧分隔符
-            let sep = buffer.indexOf('\n\n');
-            while (sep !== -1) {
-                parseBlock(buffer.slice(0, sep));
-                buffer = buffer.slice(sep + 2);
-                sep = buffer.indexOf('\n\n');
-            }
+        } catch (e) {
+            console.warn('[streamPigInspectionReport] AI 服务不可用，降级到 Mock 流:', e);
+            await runMockStream();
         }
     },
 

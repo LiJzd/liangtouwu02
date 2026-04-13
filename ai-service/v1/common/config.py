@@ -6,6 +6,8 @@ System Configuration Management
 从环境变量及 .env 文件中自动加载配置项。
 """
 
+from typing import Any, AnyStr, Optional
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -36,10 +38,25 @@ class Settings(BaseSettings):
         "http://localhost:8080", 
         "http://localhost:3000", 
         "http://localhost:5173", 
+        "http://localhost:8888",
         "http://127.0.0.1:5173", 
         "http://127.0.0.1:8080", 
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8888"
     ]
+    
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            import json
+            try:
+                # 尝试解析 JSON 格式的列表 (e.g. '["a", "b"]')
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # 如果不是 JSON 格式，则按逗号分隔 (e.g. 'a, b')
+                return [i.strip() for i in v.split(",") if i.strip()]
+        return v
     
     # --- YOLO 模型配置 ---
     yolo_model_path: str = "../resources/assets/yolov10m_train_312/weights/best.pt"
@@ -75,9 +92,9 @@ class Settings(BaseSettings):
     central_agent_max_history: int = 6
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_model: str = "qwen-plus"
-    dashscope_vl_model: str = "qwen-vl-plus"
-    dashscope_omni_model: str = "qwen-vl-plus"
+    dashscope_model: str = "qwen3.5-plus"
+    dashscope_vl_model: str = "qwen3.5-plus"
+    dashscope_omni_model: str = "qwen3.5-plus"
 
     # --- 日志配置 ---
     log_level: str = "INFO"

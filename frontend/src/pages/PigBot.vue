@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { marked } from 'marked';
 import { apiService, type Alert } from '../api';
 import {
   ALERT_RECEIVED_EVENT,
@@ -149,6 +150,12 @@ onBeforeUnmount(() => {
   removePendingAudio();
 });
 
+const renderMarkdown = (content: string) => {
+  if (!content) return '';
+  // 同步解析 Markdown
+  return marked.parse(content, { breaks: true, gfm: true }) as string;
+};
+
 const scrollToBottom = async () => {
   await nextTick();
   if (chatContainer.value) {
@@ -249,28 +256,35 @@ const handleSend = async () => {
     }
 
     if (content || event.type === 'action') {
-      // 🚀 核心优化：同一 Agent 仅保留最新的“工作中”状态
-      if (event.agent) {
-        traceLogs.value.forEach(log => {
-          if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
-            log.status = null;
-          }
+      // 🚀 核心优化：合并同一 Agent 的连续 Thought，并更新状态
+      const lastLog = traceLogs.value[traceLogs.value.length - 1];
+      if (lastLog && lastLog.type === 'thought' && event.type === 'thought' && lastLog.agent === event.agent) {
+        lastLog.content = content;
+        lastLog.status = event.status;
+        lastLog.timestamp = timestamp;
+      } else {
+        if (event.agent) {
+          traceLogs.value.forEach(log => {
+            if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
+              log.status = null;
+            }
+          });
+        }
+
+        traceLogs.value.push({
+          id: logId,
+          type: event.type as any,
+          agent: event.agent,
+          status: event.status,
+          content: content,
+          raw: event.data || {},
+          title: title,
+          isFolded: true,
+          timestamp
         });
       }
 
-      traceLogs.value.push({
-        id: logId,
-        type: event.type as any,
-        agent: event.agent,
-        status: event.status,
-        content: content,
-        raw: event.data || {},
-        title: title,
-        isFolded: true,
-        timestamp
-      });
-
-      // 自动滚动
+      // 自动滚动 (节流滚动或仅在有新消息时)
       nextTick(() => {
         const panel = document.querySelector('.custom-scrollbar');
         if (panel) panel.scrollTop = panel.scrollHeight;
@@ -476,19 +490,22 @@ const stopRecording = () => {
 
                 <!-- 对话气泡框 -->
                 <div 
-                  class="relative px-3.5 py-2.5 text-[13px] font-inter leading-relaxed select-text min-h-[36px] flex flex-col transition-all border"
+                  class="relative px-3.5 py-2.5 text-[13px] font-inter leading-relaxed select-text min-h-[36px] flex flex-col transition-all border overflow-hidden"
                   :class="[
                     msg.role === 'user'
                       ? 'bg-gradient-to-r from-secondary to-[#047857] text-white rounded-[18px] rounded-tr-[4px] shadow-md shadow-emerald-600/20 border-transparent'
                       : 'bg-white text-emerald-950 rounded-[18px] rounded-tl-[4px] shadow-sm border-emerald-100/80',
                   ]"
                 >
-                  <div v-if="!msg.isTyping" class="whitespace-pre-wrap break-words break-all text-sm">
-                    <div v-if="msg.audio" class="flex items-center gap-2 mb-1 text-emerald-100">
+                  <div v-if="!msg.isTyping" 
+                    class="break-words break-all text-sm prose-emerald prose-headings:text-emerald-900 prose-p:my-1 prose-headings:my-2"
+                    :class="msg.role === 'user' ? 'prose-invert text-white' : 'prose prose-sm max-w-none'"
+                  >
+                    <div v-if="msg.audio" class="flex items-center gap-2 mb-2" :class="msg.role === 'user' ? 'text-emerald-100' : 'text-secondary'">
                       <span class="material-symbols-outlined text-sm animate-pulse">settings_voice</span>
-                      <span class="text-[11px] font-bold italic tracking-wide">MULTIMODAL AUDIO ATTACHED</span>
+                      <span class="text-[11px] font-bold italic tracking-wide uppercase">Multimodal Audio</span>
                     </div>
-                    {{ msg.content }}
+                    <div v-html="renderMarkdown(msg.content)"></div>
                   </div>
                   
                   <!-- 发送的图像渲染缩略图 -->
@@ -676,8 +693,10 @@ const stopRecording = () => {
             <!-- 推理内容 -->
             <div class="space-y-3">
               <!-- Thought 核心展示 -->
-              <div v-if="log.type === 'thought' || log.raw?.thought" class="text-[13px] text-emerald-950 leading-relaxed font-medium">
-                {{ log.type === 'thought' ? log.content : log.raw.thought }}
+              <div v-if="log.type === 'thought' || log.raw?.thought" 
+                class="text-[13px] text-emerald-950 leading-relaxed prose prose-sm prose-emerald max-w-none prose-p:my-0.5"
+              >
+                <div v-html="renderMarkdown(log.type === 'thought' ? log.content : (log.raw.thought || ''))"></div>
               </div>
 
               <!-- Action 展示 (折叠部分) -->

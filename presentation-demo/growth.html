@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猪只生长体重预测模型对比 - 两头乌 AI 演示中心</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;600;800&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="css/style.css?v=2.2">
+    <link rel="stylesheet" href="css/growth.css?v=2.2">
+    <!-- 更换为更稳定的 CDNJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="header-left">
+                <h1>两头乌 AI 演示中心</h1>
+                <p>双轨生长分析系统：基于生物方程的动态残差拟合展示</p>
+            </div>
+            <nav class="module-nav">
+                <a href="index.html" class="nav-item">语义推理中心</a>
+                <a href="growth.html" class="nav-item active">生长分析系统</a>
+            </nav>
+        </header>
+
+        <div class="stats-bar">
+            <div class="stat-card">
+                <span class="stat-label">环境生长效率</span>
+                <span class="stat-value" id="efficiency-val">98.5%</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">累计出栏体重</span>
+                <span class="stat-value" id="weight-val">120.4 kg</span>
+            </div>
+            <div class="stat-card highlight">
+                <span class="stat-label">模型拟合度</span>
+                <span class="stat-value" id="fitting-val">智能体 (最优)</span>
+            </div>
+        </div>
+
+        <main class="chart-section" style="background: rgba(0, 10, 20, 0.9); min-height: 500px; display: flex; align-items: center; justify-content: center;">
+            <div id="growth-chart" style="width: 100%; height: 500px; min-height: 500px;">
+                <div style="color: rgba(0, 242, 255, 0.4); text-align: center; font-family: 'Fira Code', monospace; padding: 100px;">
+                    [SYSTEM_BOOT] ENGINE_WARMING_UP...
+                </div>
+            </div>
+        </main>
+
+        <footer class="control-panel">
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span class="slider-label">环境温度 (°C)</span>
+                    <span class="slider-value" id="temp-display">22</span>
+                </div>
+                <input type="range" id="temp-slider" min="15" max="40" value="22" step="1">
+                <div class="slider-ticks">
+                    <span>15</span>
+                    <span>25</span>
+                    <span>35</span>
+                </div>
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span class="slider-label">采食量比例 (%)</span>
+                    <span class="slider-value" id="feed-display">100</span>
+                </div>
+                <input type="range" id="feed-slider" min="50" max="100" value="100" step="1">
+                <div class="slider-ticks">
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                </div>
+            </div>
+            <div class="slider-group">
+                <div class="slider-header">
+                    <span class="slider-label">个体健康指数 (%)</span>
+                    <span class="slider-value" id="health-display">100</span>
+                </div>
+                <input type="range" id="health-slider" min="70" max="100" value="100" step="1">
+                <div class="slider-ticks">
+                    <span>病态</span>
+                    <span>亚健康</span>
+                    <span>健康</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 内联引擎逻辑，消除外部文件加载风险 -->
+    <script>
+    (function() {
+        /**
+         * 猪只生长分析系统 - 核心逻辑插件 (Inline Build 2.4)
+         */
+        const boot = () => {
+            console.log("Dual-Track Growth Engine: Booting from inline script...");
+
+            if (typeof echarts === 'undefined') {
+                document.getElementById('growth-chart').innerHTML = `<div style="color:#ff003c; border:1px solid #ff003c; padding:20px; text-align:center;">
+                    [FATAL_ERROR] echarts.js FAILED_TO_LOAD. PLEASE_CHECK_NETWORK.
+                </div>`;
+                return;
+            }
+
+            const chartDom = document.getElementById('growth-chart');
+            if (!chartDom) return;
+
+            const myChart = echarts.init(chartDom);
+            const $ = (id) => document.getElementById(id);
+            const tempSlider = $('temp-slider'), feedSlider = $('feed-slider'), healthSlider = $('health-slider');
+            const tempDisp = $('temp-display'), feedDisp = $('feed-display'), healthDisp = $('health-display');
+            const effVal = $('efficiency-val'), weightVal = $('weight-val');
+
+            const CONFIG = { days: 150, K: 140, A: 5.2, B_base: 0.025, noise: 8 };
+
+            function getGompertz(t, K, A, B) { return K * Math.exp(-A * Math.exp(-B * t)); }
+
+            function render() {
+                const T = parseFloat(tempSlider.value), F = parseFloat(feedSlider.value) / 100, H = parseFloat(healthSlider.value) / 100;
+                let tPenalty = 1.0;
+                if (T > 25) tPenalty = 1.0 - (T - 25) * 0.035;
+                else if (T < 18) tPenalty = 1.0 - (18 - T) * 0.01;
+
+                const fPenalty = 0.7 + (F * 0.3);
+                const B_agent = CONFIG.B_base * tPenalty * fPenalty;
+
+                const daysArr = [], mathD = [], aiD = [], agentD = [], actualD = [];
+                let lastAi = 5;
+
+                for (let i = 0; i <= CONFIG.days; i++) {
+                    daysArr.push('D' + i);
+                    lastAi = Math.max(0, lastAi + 0.6 + (Math.random() - 0.5) * CONFIG.noise);
+                    if (i > 80 && Math.random() > 0.96) lastAi -= 22;
+                    aiD.push(lastAi.toFixed(2));
+                    mathD.push(getGompertz(i, CONFIG.K, CONFIG.A, CONFIG.B_base).toFixed(2));
+                    const aVal = getGompertz(i, CONFIG.K, CONFIG.A, B_agent);
+                    agentD.push(aVal.toFixed(2));
+                    let actVal = aVal;
+                    if (i > 90) actVal = aVal * (1.0 - (1 - H) * 0.015 * ((i - 90) / 60));
+                    actVal += (Math.random() - 0.5) * 1.6;
+                    actualD.push(actVal.toFixed(2));
+                }
+
+                effVal.innerText = (tPenalty * fPenalty * 100).toFixed(1) + "%";
+                weightVal.innerText = agentD[agentD.length - 1] + " kg";
+                effVal.style.color = (tPenalty * fPenalty) < 0.8 ? '#fb2c36' : '#00f2ff';
+
+                myChart.setOption({
+                    backgroundColor: 'transparent',
+                    tooltip: { trigger: 'axis', backgroundColor: 'rgba(0,10,20,0.9)', borderColor: 'rgba(0,242,255,0.3)', textStyle: { color:'#fff' } },
+                    legend: { data: ['通用智能 (混乱)', '传统数学模型', '智能体 (动态拟合)', '实验实测数据'], textStyle: { color: 'rgba(255,255,255,0.7)' }, top: 10 },
+                    grid: { left: '4%', right: '4%', bottom: '10%', top: '15%', containLabel: true },
+                    xAxis: { type: 'category', data: daysArr, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+                    yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
+                    series: [
+                        { name: '通用智能 (混乱)', type: 'line', data: aiD, symbol: 'none', lineStyle: { color: '#ff4d4d', opacity: 0.3 } },
+                        { name: '传统数学模型', type: 'line', data: mathD, symbol: 'none', lineStyle: { color: '#9d5bff', type: 'dashed', opacity: 0.5 } },
+                        { name: '智能体 (动态拟合)', type: 'line', data: agentD, symbol: 'none', lineStyle: { width: 4, color: '#00f2ff', shadowBlur: 10, shadowColor: 'rgba(0,242,255,0.6)' }, smooth: true },
+                        { name: '实验实测数据', type: 'scatter', data: actualD, symbolSize: 5, itemStyle: { color: '#ffaa00' } }
+                    ]
+                });
+            }
+
+            [tempSlider, feedSlider, healthSlider].forEach(s => {
+                s.oninput = () => {
+                    const dispMap = { 'temp-slider': tempDisp, 'feed-slider': feedDisp, 'health-slider': healthDisp };
+                    dispMap[s.id].innerText = s.value + (s.id === 'temp-slider' ? '' : '%');
+                    render();
+                };
+            });
+            window.onresize = () => myChart.resize();
+            render();
+        };
+
+        if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', boot); } else { boot(); }
+    })();
+    </script>
+</body>
+</html>

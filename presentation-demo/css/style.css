@@ -1,0 +1,342 @@
+:root {
+    --bg-black: #050505;
+    --neon-cyan: #00f2ff;
+    --neon-green: #00ff41;
+    --neon-amber: #ffaa00;
+    --neon-red: #ff003c;
+    --glass-white: rgba(255, 255, 255, 0.05);
+    --grid-line: rgba(0, 242, 255, 0.05);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Fira Code', 'Inter', monospace;
+}
+
+body {
+    background: var(--bg-black);
+    color: var(--neon-cyan);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background-image: 
+        linear-gradient(var(--grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 30px 30px;
+}
+
+.app-container {
+    width: 98%;
+    max-width: 1600px;
+    height: 95vh;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    position: relative;
+    background: rgba(0, 10, 20, 0.5);
+}
+
+.app-container::before, .app-container::after {
+    content: ''; position: absolute; width: 40px; height: 40px;
+    border: 2px solid var(--neon-cyan); z-index: 10;
+}
+.app-container::before { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+.app-container::after { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 242, 255, 0.3);
+    padding-bottom: 15px;
+}
+
+.module-nav {
+    display: flex;
+    gap: 15px;
+}
+
+.nav-item {
+    padding: 8px 16px;
+    color: rgba(0, 242, 255, 0.5);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: 1px solid rgba(0, 242, 255, 0.1);
+    transition: 0.3s;
+    background: rgba(0, 242, 255, 0.02);
+}
+
+.nav-item:hover {
+    color: var(--neon-cyan);
+    background: rgba(0, 242, 255, 0.05);
+    border-color: rgba(0, 242, 255, 0.4);
+}
+
+.nav-item.active {
+    color: var(--bg-black);
+    background: var(--neon-cyan);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+}
+
+header h1 {
+    font-size: 1.8rem;
+    font-weight: 900;
+    text-shadow: 0 0 10px var(--neon-cyan);
+    letter-spacing: 2px;
+}
+
+.demo-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.4fr;
+    gap: 15px;
+    overflow: hidden;
+}
+
+.chat-column {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(0, 242, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+
+.column-header {
+    background: rgba(0, 242, 255, 0.05);
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(0, 242, 255, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.status-dot {
+    width: 8px; height: 8px;
+    background: var(--neon-green);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--neon-green);
+}
+
+.column-header h2 {
+    font-size: 0.9rem;
+    color: var(--neon-cyan);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.chat-canvas {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.chat-canvas::-webkit-scrollbar { width: 4px; }
+.chat-canvas::-webkit-scrollbar-thumb { background: var(--neon-cyan); }
+
+.message {
+    max-width: 90%;
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    position: relative;
+    border-left: 3px solid var(--neon-cyan);
+    background: rgba(0, 242, 255, 0.03);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.message.user {
+    align-self: flex-end;
+    border-left: 0;
+    border-right: 3px solid var(--neon-green);
+    background: rgba(0, 255, 65, 0.03);
+}
+
+.react-chain {
+    width: 100%;
+    background: transparent !important;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    position: relative;
+}
+
+.timeline-track {
+    position: absolute;
+    left: 14px; top: 10px; bottom: 10px;
+    width: 1px;
+    background: rgba(0, 187, 255, 0.2);
+}
+
+.react-node {
+    padding-left: 45px;
+    position: relative;
+    animation: slideRight 0.5s ease-out forwards;
+}
+
+.node-bullet {
+    position: absolute;
+    left: 8px; top: 0;
+    width: 12px; height: 12px;
+    background: var(--bg-black);
+    border: 2px solid var(--neon-cyan);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--neon-cyan);
+    z-index: 2;
+}
+
+.node-card {
+    border: 1px solid rgba(0, 242, 255, 0.1);
+    background: rgba(0, 10, 20, 0.6);
+    padding: 15px;
+    position: relative;
+}
+
+.node-card::before {
+    content: ''; position: absolute; top: -1px; right: -1px;
+    width: 10px; height: 10px;
+    border-top: 2px solid var(--neon-cyan); border-right: 2px solid var(--neon-cyan);
+}
+
+.node-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.node-title {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: rgba(0, 242, 255, 0.6);
+}
+
+.node-content {
+    font-size: 0.85rem;
+    color: #fff;
+    line-height: 1.6;
+    min-height: 20px;
+}
+
+.terminal-block {
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(0, 242, 255, 0.2);
+    padding: 12px;
+    margin-top: 10px;
+    color: #fff;
+    font-size: 0.8rem;
+    border-left: 3px solid var(--neon-amber);
+    font-family: 'Fira Code', monospace;
+}
+
+.terminal-error {
+    background: rgba(40, 0, 0, 0.8);
+    border: 1px solid var(--neon-red);
+    padding: 12px;
+    margin-top: 10px;
+    color: #ffcccc;
+    font-size: 0.8rem;
+    border-left: 3px solid var(--neon-red);
+    font-family: 'Fira Code', monospace;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.cursor {
+    display: inline-block;
+    width: 8px; height: 1.2em;
+    background: var(--neon-cyan);
+    margin-left: 4px;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+.final-wrap {
+    border: 1px solid var(--neon-green);
+    background: rgba(0, 255, 65, 0.05);
+    padding: 15px;
+    margin-top: 10px;
+    color: var(--neon-green);
+    box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.1);
+}
+
+.input-area {
+    padding: 20px;
+    background: rgba(0, 242, 255, 0.02);
+    border-top: 1px solid rgba(0, 242, 255, 0.2);
+}
+
+.input-container {
+    display: flex;
+    border: 1px solid rgba(0, 242, 255, 0.3);
+    background: rgba(0, 0, 0, 0.5);
+}
+
+input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--neon-cyan);
+    padding: 15px;
+    outline: none;
+}
+
+button {
+    background: var(--neon-cyan);
+    color: var(--bg-black);
+    border: none;
+    padding: 0 30px;
+    font-weight: 900;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+button:hover { background: #fff; box-shadow: 0 0 20px var(--neon-cyan); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideRight { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+
+@keyframes slide-in {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* 扫描线动效 */
+.scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 10px;
+    background: linear-gradient(to bottom, transparent, rgba(0, 242, 255, 0.1), transparent);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 100;
+    animation: scan 4s linear infinite;
+}
+
+@keyframes scan {
+    from { top: -10%; }
+    to { top: 110%; }
+}

@@ -10,9 +10,13 @@ import starlette.formparsers
 
 # 解决 "Part exceeded maximum size of 1024KB" 错误
 # 提升单个 multipart 分块的最大内存限制（默认 1MB，改为 10MB）
-# 因为 Starlette 在方法签名中硬编码了默认值，直接修改类属性可能无效，需修改 __kwdefaults__
-starlette.requests.Request.form.__kwdefaults__["max_part_size"] = 10 * 1024 * 1024
-starlette.formparsers.MultiPartParser.__init__.__kwdefaults__["max_part_size"] = 10 * 1024 * 1024
+try:
+    if hasattr(starlette.requests.Request.form, "__kwdefaults__") and starlette.requests.Request.form.__kwdefaults__:
+        starlette.requests.Request.form.__kwdefaults__["max_part_size"] = 10 * 1024 * 1024
+    if hasattr(starlette.formparsers.MultiPartParser.__init__, "__kwdefaults__") and starlette.formparsers.MultiPartParser.__init__.__kwdefaults__:
+        starlette.formparsers.MultiPartParser.__init__.__kwdefaults__["max_part_size"] = 10 * 1024 * 1024
+except Exception as e:
+    logging.getLogger(__name__).warning(f"Failed to apply multipart monkey patch: {e}")
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
@@ -93,13 +97,60 @@ app = FastAPI(
 # --- CORS 配置 ---
 
 settings = get_settings()
+
+
+class CORSPreflightMiddleware:
+    """
+    纯 ASGI 中间件：处理没有 access-control-request-method 头的 OPTIONS，
+    以及任何其他 CORSMiddleware 是否安全返回 200。
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method", "").upper() == "OPTIONS":
+            origin = b"*"
+            allow_credentials = False
+            for name, value in scope.get("headers", []):
+                if name.lower() == b"origin":
+                    origin = value
+                    allow_credentials = True
+                    break
+
+            headers = [
+                (b"access-control-allow-origin", origin),
+                (b"access-control-allow-methods", b"GET, POST, PUT, DELETE, OPTIONS, PATCH"),
+                (b"access-control-allow-headers", b"*"),
+                (b"access-control-max-age", b"86400"),
+                (b"content-length", b"0"),
+                (b"vary", b"Origin"),
+            ]
+            if allow_credentials:
+                headers.append((b"access-control-allow-credentials", b"true"))
+
+            logger.debug(f"[CORSPreflightMiddleware] OPTIONS {scope.get('path')} -> 200")
+            await send({"type": "http.response.start", "status": 200, "headers": headers})
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+            return
+
+        await self.app(scope, receive, send)
+
+
+# --- CORS 配置 ---
+
+# 使用正则匹配所有 localhost/127.0.0.1 源，比列表更可靠
+# allow_origin_regex 会在 is_allowed_origin() 里通过，preflight 返回 200
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# 必须在 CORSMiddleware 之后调用，使其成为最外层入口
+# Starlette 的 add_middleware 是前向插入，最后调用的会被包在最外层
+app.add_middleware(CORSPreflightMiddleware)
+logger.info("[CORS] 已启用 allow_origin_regex 匹配所有 localhost/127.0.0.1 源")
 
 
 # --- 全局异常处理 ---
@@ -107,7 +158,7 @@ app.add_middleware(
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """捕获并处理业务逻辑中的参数校验错误。"""
-    logger.error(f"Parameter validation failed: {str(exc)}")
+    logger.error(f"Parameter validation failed: {str(exc)}", exc_info=True)
     error_response = ErrorResponse(
         code=status.HTTP_400_BAD_REQUEST,
         message="Request parameter error",
