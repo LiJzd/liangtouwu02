@@ -733,9 +733,8 @@ onUnmounted(() => {
             <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-emerald-400 to-secondary transform origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500"></div>
             <div class="flex justify-between items-start mb-6 pt-2">
               <div>
-                <span class="inline-flex items-center px-3 py-1 rounded-full bg-surface-container-highest border border-emerald-200 text-[10px] uppercase font-black text-emerald-900 font-headline mb-4 tracking-widest">{{ pig.pigId }}</span>
-                <h3 class="text-xl font-headline font-bold text-emerald-950">{{ pig.breed }}</h3>
-                <p class="text-[11px] text-emerald-900/50 mt-1 font-bold uppercase tracking-widest flex items-center"><span class="material-symbols-outlined text-[14px] mr-1">location_on</span>{{ pig.area }}</p>
+                <h3 class="text-2xl font-headline font-bold text-emerald-950 mt-2">{{ pig.pigId }}</h3>
+                <p class="text-[11px] text-emerald-900/50 mt-2 font-bold uppercase tracking-widest flex items-center"><span class="material-symbols-outlined text-[14px] mr-1">location_on</span>{{ pig.area }}</p>
               </div>
               <div class="w-10 h-10 flex items-center justify-center bg-emerald-50 rounded-full text-secondary shadow-sm group-hover:scale-110 transition-transform">
                 <span class="material-symbols-outlined text-[20px]">timeline</span>

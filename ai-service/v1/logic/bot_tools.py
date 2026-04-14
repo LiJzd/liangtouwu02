@@ -352,7 +352,7 @@ async def tool_get_pig_info_by_id(arg: str) -> str:
         return f"查询猪只档案异常: {str(e)}"
 
 
-@tool(name="query_pig_disease_rag", description="查询两头乌猪病症知识库，根据症状描述返回可能的疾病、诊断建议和治疗方案")
+@tool(name="query_pig_disease_rag", description="查询生猪病症数字化知识库，根据症状描述返回可能的疾病、诊断建议和治疗方案")
 async def tool_query_pig_disease_rag(arg: str) -> str:
     """
     查询两头乌猪病症向量库
@@ -538,7 +538,7 @@ async def tool_query_similar_cases(arg: str) -> str:
     breed = "两头乌"
     if isinstance(data, dict):
         symptoms = data.get("symptoms") or data.get("_raw")
-        breed = data.get("breed", "两头乌")
+        breed = data.get("breed", "默认品种")
     else:
         symptoms = str(arg).strip()
 
@@ -739,8 +739,8 @@ async def tool_query_pig_health_records(arg: str) -> str:
     # 模拟兜底
     return json.dumps({
         "abnormal_pigs": [
-            {"pig_id": "LTW-037", "breed": "两头乌", "health_score": 45, "symptoms": ["食欲下降", "精神不振"]},
-            {"pig_id": "LTW-052", "breed": "两头乌", "health_score": 55, "symptoms": ["轻微腹泻"]},
+            {"pig_id": "PIG-037", "breed": "默认品种", "health_score": 45, "symptoms": ["食欲下降", "精神不振"]},
+            {"pig_id": "PIG-052", "breed": "默认品种", "health_score": 55, "symptoms": ["轻微腹泻"]},
         ],
         "threshold": threshold,
         "source": "simulated",
@@ -986,81 +986,98 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
         
         settings = get_settings()
         
-        # 确定视频路径
-        if not video_file:
-            # 使用默认视频路径
-            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
-            # 查找第一个视频文件
-            if os.path.exists(video_dir):
-                for f in os.listdir(video_dir):
-                    if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
-                        video_file = os.path.join(video_dir, f)
-                        break
+        # --- 真实摄像头接入逻辑 ---
+        if settings.camera_use_real:
+            rtsp_url = f"rtsp://{settings.camera_user}:{settings.camera_password}@{settings.camera_ip}:{settings.camera_rtsp_port}/Streaming/Channels/101"
+            logger.info(f"正在尝试连接真实摄像头: {settings.camera_ip}")
+            
+            # 使用 contextlib 抑制可能产生的 FFmpeg 警告
+            try:
+                from v1.logic.perception_controller import suppress_stderr
+            except ImportError:
+                # 简单备选：如果导入失败则不抑制
+                from contextlib import contextmanager
+                @contextmanager
+                def suppress_stderr(): yield
+
+            with suppress_stderr():
+                cap = cv2.VideoCapture(rtsp_url)
+                if cap.isOpened():
+                    # 设置缓冲区大小，减少延迟（海康摄像头通常不需要太大缓冲用于抓拍）
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    success, frame = cap.read()
+                    if success and frame is not None and frame.size > 0:
+                        logger.info("成功从真实摄像头获取画面帧")
+                        video_file = "hikvision_live" # 标记来源
+                        # 成功获取后跳转到下游识别流程
+                        goto_yolo = True
+                    else:
+                        logger.warning("无法从 RTSP 流读取帧，将回退到模拟视频")
+                        cap.release()
+                        goto_yolo = False
+                else:
+                    logger.warning(f"无法打开 RTSP 连接: {settings.camera_ip}，将回退到模拟视频")
+                    goto_yolo = False
         else:
-            # 使用指定的视频文件
-            video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
-            video_file = os.path.join(video_dir, video_file)
-        
-        if not video_file or not os.path.exists(video_file):
-            return json.dumps({
-                "error": "未找到可用的视频文件",
-                "message": "请确保视频文件存在于 resources/videos 目录中"
-            }, ensure_ascii=False)
-        
-        # 打开视频并截取当前帧
-        cap = cv2.VideoCapture(video_file)
-        if not cap.isOpened():
-            return json.dumps({
-                "error": "无法打开视频文件",
-                "video_file": video_file
-            }, ensure_ascii=False)
-        
-        import logging
-        logger = logging.getLogger("bot_tools")
-        
-        # 获取视频信息
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        duration = total_frames / fps if fps > 0 else 0
-        
-        logger.info(f"视频信息: 总帧数={total_frames}, FPS={fps}, 时长={duration:.2f}秒")
-        
-        # 跳过前5秒，然后顺序读取直到找到有效帧
-        if fps > 0:
-            skip_frames = int(fps * 5)  # 跳过前5秒
-            logger.info(f"跳过前 {skip_frames} 帧")
+            goto_yolo = False
+
+        if not goto_yolo:
+            # 确定模拟视频路径 (原有逻辑)
+            if not video_file:
+                # 使用默认视频路径
+                video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
+                # 查找第一个视频文件
+                if os.path.exists(video_dir):
+                    for f in os.listdir(video_dir):
+                        if f.lower().endswith(('.mp4', '.avi', '.mov', '.mkv')):
+                            video_file = os.path.join(video_dir, f)
+                            break
+            else:
+                # 使用指定的视频文件
+                video_dir = os.path.abspath(os.path.join(_BASE_DIR, "../resources/videos"))
+                video_file = os.path.join(video_dir, video_file)
             
-            for i in range(skip_frames):
-                cap.read()
-        
-        # 读取接下来的帧，找到第一个有效的
-        frame = None
-        success = False
-        
-        for attempt in range(50):  # 最多尝试50帧
-            success, frame = cap.read()
+            if not video_file or not os.path.exists(video_file):
+                return json.dumps({
+                    "error": "未找到可用的视频文件",
+                    "message": "请确保视频文件存在于 resources/videos 目录中"
+                }, ensure_ascii=False)
             
-            if not success or frame is None:
-                logger.warning(f"读取帧失败，尝试 {attempt + 1}/50")
-                continue
+            # 打开视频并截取当前帧
+            cap = cv2.VideoCapture(video_file)
+            if not cap.isOpened():
+                return json.dumps({
+                    "error": "无法打开视频文件",
+                    "video_file": video_file
+                }, ensure_ascii=False)
             
-            # 检查帧是否有效
-            if frame.size > 0:
-                mean_brightness = frame.mean()
-                logger.info(f"帧 {attempt}: 亮度={mean_brightness:.2f}, 形状={frame.shape}")
-                
-                # 只要不是全黑就接受
-                if mean_brightness > 5:
-                    logger.info(f"找到有效帧")
-                    break
-        
-        cap.release()
-        
-        if not success:
-            return json.dumps({
-                "error": "无法读取视频帧",
-                "video_file": video_file
-            }, ensure_ascii=False)
+            # 原有的逐帧搜索有效帧逻辑 (仅针对文件)
+            # 获取视频信息
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            duration = total_frames / fps if fps > 0 else 0
+            
+            logger.info(f"视频信息: 总帧数={total_frames}, FPS={fps}, 时长={duration:.2f}秒")
+            
+            # 跳过前5秒
+            if fps > 0:
+                skip_frames = int(fps * 5)
+                for i in range(skip_frames): cap.read()
+            
+            frame = None
+            success = False
+            for attempt in range(50):
+                success, frame = cap.read()
+                if not success or frame is None: continue
+                if frame.size > 0 and frame.mean() > 5: break
+            
+            cap.release()
+            
+            if not success:
+                return json.dumps({
+                    "error": "无法读取视频帧",
+                    "video_file": video_file
+                }, ensure_ascii=False)
         
         # 使用 YOLO 模型进行检测
         model = get_yolo_model()

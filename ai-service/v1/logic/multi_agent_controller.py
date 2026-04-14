@@ -140,7 +140,7 @@ async def chat_v2(request: Request) -> AgentChatResponse:
         # 模拟前端上传与转录的初始耗时
         await asyncio.sleep(random.uniform(0.5, 1.2))
         user_input_text = "我这只猪今天没精神，生病了"
-        logger.info(f"语音输入通过控制器层拦截，固定解析为: {user_input_text}")
+        # logger.info(f"语音输入通过控制器层拦截，固定解析为: {user_input_text}")
     
     # 构建执行上下文
     trace_id = metadata.get("trace_id") or f"user_{user_id}"

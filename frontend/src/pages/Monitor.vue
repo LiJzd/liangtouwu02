@@ -10,6 +10,7 @@ interface CameraData {
   status: 'online' | 'offline';
   location: string;
   videoFile: string;
+  type: 'mp4' | 'stream';
 }
 
 const cameras = ref<CameraData[]>([
@@ -18,14 +19,24 @@ const cameras = ref<CameraData[]>([
     name: '保育区 - 核心监控 #01', 
     status: 'online', 
     location: '保育舍核心层',
-    videoFile: 'monitor_v3.mp4'
+    videoFile: 'monitor_v3.mp4',
+    type: 'mp4'
+  },
+  { 
+    id: 101, 
+    name: '2 号猪舍 - 实时监控 (LIVE)', 
+    status: 'online', 
+    location: '2 号舍西北角',
+    videoFile: 'live',
+    type: 'stream'
   },
   { 
     id: 2, 
     name: '测试源 - 历史画面', 
     status: 'online', 
     location: '模拟场景',
-    videoFile: '4abdf5306f1a7165dc7eca7ed3f39f3e.mp4'
+    videoFile: '4abdf5306f1a7165dc7eca7ed3f39f3e.mp4',
+    type: 'mp4'
   }
 ]);
 
@@ -37,7 +48,12 @@ const videoKey = ref(0);
 const selectCamera = (cam: CameraData) => {
   selectedCamera.value = cam;
   if (cam.status === 'online' && cam.videoFile) {
-    videoUrl.value = `/${cam.videoFile}`;
+    if (cam.type === 'stream') {
+      const baseUrl = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000';
+      videoUrl.value = `${baseUrl}/api/v1/perception/stream/${cam.videoFile}`;
+    } else {
+      videoUrl.value = `/${cam.videoFile}`;
+    }
     videoKey.value++; 
   } else {
     videoUrl.value = '';
@@ -113,7 +129,15 @@ onMounted(() => {
 
           <!-- 视频层 -->
           <div v-if="videoUrl" class="relative w-full h-full flex items-center justify-center z-10">
+              <img 
+                v-if="selectedCamera.type === 'stream'"
+                :key="videoKey"
+                :src="videoUrl"
+                class="max-w-full max-h-full object-contain"
+                alt="实时监控流"
+              />
               <video
+                v-else
                 :key="videoKey"
                 class="max-w-full max-h-full object-contain"
                 autoplay

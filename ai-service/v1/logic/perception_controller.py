@@ -425,11 +425,17 @@ def generate_frames(video_path: str):
     
     cap = None
     try:
+        # 检测是否为 RTSP 协议
+        is_rtsp = video_path.startswith("rtsp://")
+        
         with suppress_stderr():
             cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
             if cap.isOpened():
                 try:
                     cap.set(cv2.CAP_PROP_LOGLEVEL, 0)
+                    if is_rtsp:
+                        # 针对实时流减少缓冲区，提升实时性
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 except:
                     pass
         if not cap.isOpened():
@@ -533,25 +539,43 @@ async def stream_video(filename: str):
     from fastapi.responses import StreamingResponse
     import os
     
-    # 路径构造逻辑：相对于当前文件的 ../../../resources/videos 目录
-    video_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../resources/videos"))
-    video_path = os.path.join(video_dir, filename)
-    
-    logger.info(f"正在建立 MJPEG 推流连接，文件: {filename}")
-    
-    if not os.path.exists(video_path):
-        # 宽容性处理：若文件名不匹配，则在目录中进行模糊匹配
-        logger.warning(f"指定视频不存在，正在执行模糊搜索...")
-        found = False
-        for f in os.listdir(video_dir):
-            if f == filename or f.endswith(filename):
-                video_path = os.path.join(video_dir, f)
-                found = True
-                break
+    # 检查是否请求实时流
+    if filename == "live":
+        settings = get_settings()
+        if settings.camera_use_real:
+            video_path = f"rtsp://{settings.camera_user}:{settings.camera_password}@{settings.camera_ip}:{settings.camera_rtsp_port}/Streaming/Channels/101"
+            logger.info(f"正在建立【真实摄像头】MJPEG 推流连接: {settings.camera_ip}")
+        else:
+            logger.warning("未开启真实摄像头配置，回退至默认演示视频")
+            video_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../resources/videos"))
+            # 找到第一个可用的视频作为回退
+            video_path = None
+            for f in os.listdir(video_dir):
+                if f.lower().endswith(('.mp4', '.avi')):
+                    video_path = os.path.join(video_dir, f)
+                    break
+            if not video_path:
+                raise HTTPException(status_code=404, detail="无可用视频资源")
+    else:
+        # 原有路径构造逻辑：相对于当前文件的 ../../../resources/videos 目录
+        video_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../resources/videos"))
+        video_path = os.path.join(video_dir, filename)
         
-        if not found:
-            logger.error(f"核心视频资源缺失: {filename}")
-            raise HTTPException(status_code=404, detail="无法找到请求的视频流资源")
+        logger.info(f"正在建立 MJPEG 推流连接，文件: {filename}")
+        
+        if not os.path.exists(video_path):
+            # 宽容性处理：若文件名不匹配，则在目录中进行模糊匹配
+            logger.warning(f"指定视频不存在，正在执行模糊搜索...")
+            found = False
+            for f in os.listdir(video_dir):
+                if f == filename or f.endswith(filename):
+                    video_path = os.path.join(video_dir, f)
+                    found = True
+                    break
+            
+            if not found:
+                logger.error(f"核心视频资源缺失: {filename}")
+                raise HTTPException(status_code=404, detail="无法找到请求的视频流资源")
 
     # 返回流式响应，MediaType 指定为 MJPEG
     return StreamingResponse(

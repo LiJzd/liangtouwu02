@@ -250,41 +250,35 @@ const handleSend = async () => {
       title = '推理异常';
     } else if (event.type === 'thought') {
       content = event.data.content;
-      title = '心中戏';
+      title = '思考过程';
     } else if (event.type === 'heartbeat') {
       return; // 忽略心跳包，不推送到 UI
     }
 
     if (content || event.type === 'action') {
-      // 🚀 核心优化：合并同一 Agent 的连续 Thought，并更新状态
-      const lastLog = traceLogs.value[traceLogs.value.length - 1];
-      if (lastLog && lastLog.type === 'thought' && event.type === 'thought' && lastLog.agent === event.agent) {
-        lastLog.content = content;
-        lastLog.status = event.status;
-        lastLog.timestamp = timestamp;
-      } else {
-        if (event.agent) {
-          traceLogs.value.forEach(log => {
-            if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
-              log.status = null;
-            }
-          });
-        }
-
-        traceLogs.value.push({
-          id: logId,
-          type: event.type as any,
-          agent: event.agent,
-          status: event.status,
-          content: content,
-          raw: event.data || {},
-          title: title,
-          isFolded: true,
-          timestamp
+      // 状态清理：若当前事件有 Agent，则清除该 Agent 之前的活跃状态标识
+      if (event.agent) {
+        traceLogs.value.forEach(log => {
+          if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
+            log.status = null;
+          }
         });
       }
 
-      // 自动滚动 (节流滚动或仅在有新消息时)
+      // 核心变更：不再合并 Thought，直接推入新节点以形成完整的推理链
+      traceLogs.value.push({
+        id: logId,
+        type: event.type as any,
+        agent: event.agent,
+        status: event.status,
+        content: content,
+        raw: event.data || {},
+        title: title,
+        isFolded: true,
+        timestamp
+      });
+
+      // 自动滚动
       nextTick(() => {
         const panel = document.querySelector('.custom-scrollbar');
         if (panel) panel.scrollTop = panel.scrollHeight;

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import numpy as np  # 🚀 强制在任何其他逻辑前锁定 numpy 状态，解决 Py3.13 冲突
 """
 Liangtouwu AI Service - FastAPI Application Entry Point
 
@@ -287,29 +288,30 @@ try:
         logger.info(f"静态文件服务已挂载: /static -> {static_dir}")
 except Exception as e:
     logger.warning(f"静态文件服务挂载失败: {e}")
+
 if __name__ == "__main__":
     import uvicorn
+    from v1.common.config import get_settings
+
+    settings = get_settings()
     
-    # 终于要点火起航了 (相当于 java -jar)
-    # 核心参数说明：
-    # - host/port: 绑定地址和端口
-    # - reload: 由于 Windows 下 watchfiles 稳定性问题，建议生产/测试环境设为 False
-    # - log_level: 日志过滤级别
-    # 过滤掉 /api/v1/bot/outbox/pending 的访问日志
+    # 确保项目根目录在 sys.path 中 (增强稳定性)
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+    # 移除日志噪音
     class EndpointFilter(logging.Filter):
         def filter(self, record: logging.LogRecord) -> bool:
             return record.getMessage().find("/api/v1/bot/outbox/pending") == -1
 
     logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 
+    print(f"--- 正在使用原生入口启动 AI 服务 (Python {sys.version.split()[0]}) ---")
     uvicorn.run(
-        "main:app", 
+        app, 
         host=settings.host,
         port=settings.port,
         reload=False, 
         log_level=settings.log_level.lower()
     )
-
-
-
-

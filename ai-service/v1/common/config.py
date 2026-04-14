@@ -92,9 +92,16 @@ class Settings(BaseSettings):
     central_agent_max_history: int = 6
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    dashscope_model: str = "qwen3.5-plus"
-    dashscope_vl_model: str = "qwen3.5-plus"
-    dashscope_omni_model: str = "qwen3.5-plus"
+    dashscope_model: str = "qwen3.5-flash"
+    dashscope_vl_model: str = "qwen3.5-flash"
+    dashscope_omni_model: str = "qwen3.5-flash"
+    
+    # --- 海康摄像头配置 ---
+    camera_ip: str = "192.168.1.64"
+    camera_user: str = "admin"
+    camera_password: str = "jhc20260414"
+    camera_rtsp_port: int = 554
+    camera_use_real: bool = True
 
     # --- 日志配置 ---
     log_level: str = "INFO"

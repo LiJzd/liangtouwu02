@@ -6,21 +6,23 @@ from dotenv import load_dotenv
 load_dotenv(r"C:\Users\lost\Desktop\两头乌\ai-service\.env")
 
 api_key = os.environ.get("DASHSCOPE_API_KEY")
-model = os.environ.get("DASHSCOPE_MODEL")
+vl_model = os.environ.get("DASHSCOPE_VL_MODEL") or "qwen-omni-turbo"
+model = os.environ.get("DASHSCOPE_MODEL") or "qwen-max"
 
-print(f"Testing model: {model}")
+print(f"Testing text model: {model}")
+print(f"Testing VL model: {vl_model}")
 
 def test_multimodal():
     print("\n--- Testing MultiModalConversation ---")
     messages = [{'role': 'user', 'content': [{'text': 'Hello, who are you?'}]}]
     response = MultiModalConversation.call(
-        model=model,
+        model=vl_model,
         messages=messages,
         api_key=api_key,
     )
     print(f"Response Status: {response.status_code}")
-    print(f"Response Code: {response.code}")
-    print(f"Response Message: {response.message}")
+    print(f"Response Code: {getattr(response, 'code', 'N/A')}")
+    print(f"Response Message: {getattr(response, 'message', 'N/A')}")
     if response.status_code == 200:
         print(f"Output: {response.output.choices[0].message.content}")
     else:

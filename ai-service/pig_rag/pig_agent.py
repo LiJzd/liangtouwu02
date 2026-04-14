@@ -21,13 +21,13 @@ except ImportError:
 # 全局配置
 
 # 阿里通义千问的接口配置。API KEY 建议存在系统环境变量里，要是没设，就先用这个默认的。
-# 模型选 qwen3.5-plus，因为它理解中文逻辑比较稳，性价比也高。
+# 模型选 qwen3.5-flash，因为它推理速度快，且具备多模态能力。
 DASHSCOPE_API_KEY = os.environ.get(
     "DASHSCOPE_API_KEY",
     "sk-564244e28e5d4c35bf9fa9c9565f0efb"
 )
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_MODEL = "qwen3.5-plus"
+LLM_MODEL = "qwen3.5-flash"
 
 
 # 工具函数：把各种乱七八糟的数据转成数字，防止程序报错
@@ -274,7 +274,7 @@ def _call_llm_for_diagnosis(prompt: str) -> str:
             base_url=DASHSCOPE_BASE_URL,
         )
 
-        # 阿里通义千问 Qwen3.5-Plus 具备极致的性价比和推理稳定性
+        # 阿里通义千问 Qwen3.5-Flash 具备极致的推理速度和多模态能力
         response = client.chat.completions.create(
             model=LLM_MODEL,
             messages=[
