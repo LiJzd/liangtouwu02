@@ -76,7 +76,7 @@ CREATE TABLE environment_trend (
 INSERT IGNORE INTO sys_user (username, password, nickname, status) 
 VALUES ('admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.vK56.vT.4/E7fX8K0Z0D8T.', '管理员', '0');
 
--- 初始猪只数据
+-- 初始猪只数据 (扩容至 10 头以展示群体规模)
 INSERT IGNORE INTO pig (id, breed, score, issue, body_temp, activity_level, lifecycle) VALUES
 ('PIG001', '两头乌', 95, '健康', 38.5, 80, JSON_ARRAY(
     JSON_OBJECT('month', 1, 'feed_count', 45, 'feed_duration_mins', 280, 'water_count', 80, 'water_duration_mins', 160, 'weight_kg', 28.5),
@@ -86,7 +86,15 @@ INSERT IGNORE INTO pig (id, breed, score, issue, body_temp, activity_level, life
 ('PIG002', '两头乌', 60, '疑似温热', 39.8, 30, JSON_ARRAY(
     JSON_OBJECT('month', 1, 'feed_count', 48, 'feed_duration_mins', 300, 'water_count', 85, 'water_duration_mins', 170, 'weight_kg', 30.0),
     JSON_OBJECT('month', 2, 'feed_count', 54, 'feed_duration_mins', 355, 'water_count', 93, 'water_duration_mins', 198, 'weight_kg', 40.5)
-));
+)),
+('PIG003', '两头乌', 98, '健康', 38.4, 85, NULL),
+('PIG004', '两头乌', 92, '健康', 38.6, 78, NULL),
+('PIG005', '两头乌', 95, '健康', 38.4, 82, NULL),
+('PIG006', '两头乌', 91, '健康', 38.7, 75, NULL),
+('PIG007', '两头乌', 45, '食欲下降', 39.5, 40, NULL),
+('PIG008', '两头乌', 96, '健康', 38.5, 88, NULL),
+('PIG009', '两头乌', 88, '健康', 38.3, 70, NULL),
+('PIG010', '两头乌', 94, '健康', 38.6, 84, NULL);
 
 -- 初始摄像头
 INSERT IGNORE INTO camera (name, status, location) VALUES 

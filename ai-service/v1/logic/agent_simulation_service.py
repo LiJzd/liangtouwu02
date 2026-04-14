@@ -117,9 +117,10 @@ class AgentSimulationService:
                     "event": normalized,
                     "findings": findings,
                     "is_ammonia_demo": (
-                        (normalized.get("ammonia_ppm") or 0) >= 25 or 
+                        (normalized.get("ammonia_ppm") or 0) >= 20 or 
                         "氨气" in str(normalized.get("type", "")) or 
-                        "氨气" in str(normalized.get("description", ""))
+                        "氨气" in str(normalized.get("description", "")) or
+                        "ammonia" in str(normalized.get("type", "")).lower()
                     ),
                 },
                 client_id=client_id,

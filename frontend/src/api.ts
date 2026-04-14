@@ -90,58 +90,17 @@ export const MOCK_ALERTS: Alert[] = [
     { id: 3, pigId: 'PIG-105', area: '一号舍', type: '异常攻击行为', risk: 'Critical', timestamp: '2026-03-12 09:30' },
 ];
 
-export const MOCK_PIGS_LIST = [
-    { pigId: 'PIG001', breed: 'PIG001', area: '一号舍-A区', current_weight_kg: 45.0, current_month: 3 },
-    { pigId: 'PIG002', breed: 'PIG002', area: '一号舍-B区', current_weight_kg: 82.3, current_month: 7 },
-    { pigId: 'PIG003', breed: 'PIG003', area: '二号舍-A区', current_weight_kg: 38.5, current_month: 2 },
-    { pigId: 'PIG004', breed: 'PIG004', area: '三号舍-C区', current_weight_kg: 95.5, current_month: 8 },
-    { pigId: 'PIG005', breed: 'PIG005', area: '一号舍-C区', current_weight_kg: 61.2, current_month: 5 },
-    { pigId: 'PIG006', breed: 'PIG006', area: '二号舍-B区', current_weight_kg: 48.7, current_month: 4 },
-    { pigId: 'PIG007', breed: 'PIG007', area: '三号舍-A区', current_weight_kg: 72.1, current_month: 6 },
-    { pigId: 'PIG008', breed: 'PIG008', area: '四号舍-D区', current_weight_kg: 55.4, current_month: 4 },
-    { pigId: 'PIG009', breed: 'PIG009', area: '隔离区-E区', current_weight_kg: 33.5, current_month: 2 },
-    { pigId: 'PIG010', breed: 'PIG010', area: '五号舍-A区', current_weight_kg: 68.9, current_month: 6 },
-    { pigId: 'PIG011', breed: 'PIG011', area: '五号舍-B区', current_weight_kg: 44.2, current_month: 3 },
-    { pigId: 'PIG012', breed: 'PIG012', area: '六号舍-C区', current_weight_kg: 90.1, current_month: 8 },
-    { pigId: 'PIG013', breed: 'PIG013', area: '一号舍-D区', current_weight_kg: 42.5, current_month: 3 },
-    { pigId: 'PIG014', breed: 'PIG014', area: '二号舍-C区', current_weight_kg: 58.9, current_month: 5 },
-    { pigId: 'PIG015', breed: 'PIG015', area: '三号舍-B区', current_weight_kg: 77.2, current_month: 7 },
-    { pigId: 'PIG016', breed: 'PIG016', area: '四号舍-A区', current_weight_kg: 35.1, current_month: 2 },
-    { pigId: 'PIG017', breed: 'PIG017', area: '五号舍-C区', current_weight_kg: 63.4, current_month: 5 },
-    { pigId: 'PIG018', breed: 'PIG018', area: '六号舍-B区', current_weight_kg: 49.8, current_month: 4 },
-    { pigId: 'PIG019', breed: 'PIG019', area: '七号舍-A区', current_weight_kg: 88.5, current_month: 8 },
-    { pigId: 'PIG020', breed: 'PIG020', area: '八号舍-D区', current_weight_kg: 41.2, current_month: 3 },
-    { pigId: 'PIG021', breed: 'PIG021', area: '一号舍-A区', current_weight_kg: 66.7, current_month: 6 },
-    { pigId: 'PIG022', breed: 'PIG022', area: '二号舍-B区', current_weight_kg: 53.4, current_month: 4 },
-    { pigId: 'PIG023', breed: 'PIG023', area: '三号舍-C区', current_weight_kg: 39.1, current_month: 3 },
-    { pigId: 'PIG024', breed: 'PIG024', area: '四号舍-D区', current_weight_kg: 92.3, current_month: 8 },
-    { pigId: 'PIG025', breed: 'PIG025', area: '五号舍-A区', current_weight_kg: 47.8, current_month: 4 },
-    { pigId: 'PIG026', breed: 'PIG026', area: '六号舍-B区', current_weight_kg: 71.5, current_month: 6 },
-    { pigId: 'PIG027', breed: 'PIG027', area: '七号舍-C区', current_weight_kg: 54.2, current_month: 4 },
-    { pigId: 'PIG028', breed: 'PIG028', area: '八号舍-A区', current_weight_kg: 32.9, current_month: 2 },
-    { pigId: 'PIG029', breed: 'PIG029', area: '隔离区-B区', current_weight_kg: 60.1, current_month: 5 },
-    { pigId: 'PIG030', breed: 'PIG030', area: '一号舍-C区', current_weight_kg: 85.4, current_month: 7 },
-    { pigId: 'PIG031', breed: 'PIG031', area: '二号舍-D区', current_weight_kg: 44.7, current_month: 3 },
-    { pigId: 'PIG032', breed: 'PIG032', area: '三号舍-A区', current_weight_kg: 69.2, current_month: 6 },
-    { pigId: 'PIG033', breed: 'PIG033', area: '四号舍-B区', current_weight_kg: 51.5, current_month: 4 },
-    { pigId: 'PIG034', breed: 'PIG034', area: '五号舍-C区', current_weight_kg: 37.8, current_month: 3 },
-    { pigId: 'PIG035', breed: 'PIG035', area: '六号舍-D区', current_weight_kg: 96.4, current_month: 9 },
-    { pigId: 'PIG036', breed: 'PIG036', area: '七号舍-A区', current_weight_kg: 40.2, current_month: 3 },
-    { pigId: 'PIG037', breed: 'PIG037', area: '八号舍-B区', current_weight_kg: 62.7, current_month: 5 },
-    { pigId: 'PIG038', breed: 'PIG038', area: '隔离区-C区', current_weight_kg: 78.9, current_month: 7 },
-    { pigId: 'PIG039', breed: 'PIG039', area: '一号舍-D区', current_weight_kg: 34.6, current_month: 2 },
-    { pigId: 'PIG040', breed: 'PIG040', area: '二号舍-A区', current_weight_kg: 65.3, current_month: 6 },
-    { pigId: 'PIG041', breed: 'PIG041', area: '三号舍-B区', current_weight_kg: 50.1, current_month: 4 },
-    { pigId: 'PIG042', breed: 'PIG042', area: '四号舍-C区', current_weight_kg: 89.2, current_month: 8 },
-    { pigId: 'PIG043', breed: 'PIG043', area: '五号舍-D区', current_weight_kg: 43.7, current_month: 3 },
-    { pigId: 'PIG044', breed: 'PIG044', area: '六号舍-A区', current_weight_kg: 67.8, current_month: 6 },
-    { pigId: 'PIG045', breed: 'PIG045', area: '七号舍-B区', current_weight_kg: 55.4, current_month: 4 },
-    { pigId: 'PIG046', breed: 'PIG046', area: '八号舍-C区', current_weight_kg: 36.5, current_month: 3 },
-    { pigId: 'PIG047', breed: 'PIG047', area: '隔离区-D区', current_weight_kg: 91.2, current_month: 8 },
-    { pigId: 'PIG048', breed: 'PIG048', area: '一号舍-A区', current_weight_kg: 46.5, current_month: 4 },
-    { pigId: 'PIG049', breed: 'PIG049', area: '二号舍-B区', current_weight_kg: 70.3, current_month: 6 },
-    { pigId: 'PIG050', breed: 'PIG050', area: '三号舍-C区', current_weight_kg: 52.1, current_month: 4 },
-];
+export const MOCK_PIGS_LIST = Array.from({ length: 100 }, (_, i) => {
+    const idNum = i + 1;
+    const padId = idNum.toString().padStart(3, '0');
+    return {
+        pigId: `PIG${padId}`,
+        breed: '两头乌',
+        area: `${['一号舍', '二号舍', '三号舍', '四号舍', '五号舍', '六号舍', '七号舍', '八号舍', '隔离区'][i % 9]}-${['A', 'B', 'C', 'D'][i % 4]}区`,
+        current_weight_kg: Math.round((30.0 + Math.random() * 70) * 10) / 10,
+        current_month: 2 + (i % 8)
+    };
+});
 
 // API 服务实现
 

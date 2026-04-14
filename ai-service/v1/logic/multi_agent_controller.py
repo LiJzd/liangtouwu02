@@ -178,7 +178,14 @@ async def chat_v2(request: Request) -> AgentChatResponse:
         if result.image:
             logger.info(f"Returning image to frontend, content length: {len(result.image)}")
         else:
-            logger.warning("No image returned to frontend")
+            # 只有在携带图片/音频输入，或路由到 HardwareAgent 时，才预期返回图片
+            # 其余常规文本对话不返回图片是正常行为，降级为 DEBUG 避免日志噪声
+            has_visual_input = bool(image_urls or audio_path)
+            is_hardware_route = result.worker_name == "HardwareAgent"
+            if has_visual_input or is_hardware_route:
+                logger.warning("No image returned to frontend (expected for visual/hardware request)")
+            else:
+                logger.debug("No image in response (normal for text-only requests)")
     
     finally:
         # 清理临时音频文件
