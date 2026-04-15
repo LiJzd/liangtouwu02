@@ -776,7 +776,7 @@ class GrowthCurveAgent(WorkerAgent):
             md += f"- **模型契合度**: 97.8%\n\n"
 
             if real_lifecycle:
-                md += "### 历史实测序列 (Historical)\n"
+                md += "### 历史实测数据 (Historical Data)\n"
                 md += "| 月份 | 实测体重(kg) | 采集源 |\n"
                 md += "| --- | --- | --- |\n"
                 for pt in real_lifecycle:
@@ -788,7 +788,7 @@ class GrowthCurveAgent(WorkerAgent):
             track = best.get("historical_future_track", [])
             use_data = [pt for pt in track if pt.get("month", 0) >= curr_month]
             
-            md += "### 预测生长轨迹 (AI Projection)\n"
+            md += "### 预测生长曲线数据 (Monthly Prediction Data)\n"
             md += "| 月份 (Month) | 拟合预测(kg) | 生长状态 |\n"
             md += "| :--- | :--- | :--- |\n"
             for pt in use_data:
