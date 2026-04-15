@@ -56,3 +56,6 @@ langchain-chroma==1.1.0
 # 娴嬭瘯宸ュ叿
 pytest>=8.0.0
 hypothesis>=6.0.0
+
+# 串口通信 (ESP32 中继控制)
+pyserial==3.5

@@ -934,19 +934,27 @@ async def tool_publish_alert(arg: str) -> str:
     
     import logging
     logger = logging.getLogger("bot_tools")
-    logger.info(f"正在执行告警发布与语音播报任务，播报内容: {payload.get('announcementText')}")
+    
+    url = f"{JAVA_API_BASE_URL}/api/v1/ai-tool/alerts/publish"
+    logger.info(f"🚀 [Publishing Alert] URL: {url}, Content: {payload.get('announcementText')}")
 
     try:
         async with httpx.AsyncClient(timeout=JAVA_API_TIMEOUT) as client:
+            headers = {"X-User-ID": user_id, "Content-Type": "application/json"}
+            logger.debug(f"[Publishing Alert] Headers: {headers}, Payload: {payload}")
+            
             response = await client.post(
-                f"{JAVA_API_BASE_URL}/api/v1/ai-tool/alerts/publish",
-                headers={"X-User-ID": user_id, "Content-Type": "application/json"},
+                url,
+                headers=headers,
                 json=payload,
             )
+            
+            logger.info(f"[Publishing Alert] Result Status: {response.status_code}")
             response.raise_for_status()
             result = response.json()
 
             if result.get("code") != 200:
+                logger.error(f"[Publishing Alert] Business Error: {result.get('message')}")
                 return json.dumps(
                     {"error": result.get("message", "publish_alert failed")},
                     ensure_ascii=False,
@@ -960,8 +968,10 @@ async def tool_publish_alert(arg: str) -> str:
                 ensure_ascii=False,
             )
     except httpx.HTTPError as e:
+        logger.error(f"[Publishing Alert] HTTP error: {str(e)}")
         return json.dumps({"error": f"publish_alert HTTP error: {str(e)}"}, ensure_ascii=False)
     except Exception as e:
+        logger.error(f"[Publishing Alert] Unexpected crash: {str(e)}", exc_info=True)
         return json.dumps({"error": f"publish_alert failed: {str(e)}"}, ensure_ascii=False)
 
 
@@ -1197,3 +1207,48 @@ async def tool_capture_pig_farm_snapshot(arg: str) -> str:
             "error": "视频截图识别失败",
             "message": str(e)
         }, ensure_ascii=False)
+
+
+# ============================================================
+# IOT 智能控制器工具集 (对齐两头乌 ESP32 蓝牙中继)
+# ============================================================
+
+@tool(name="control_iot_fan", description="通过 ESP32 中继控制两头乌猪场的风扇电源蓝牙控制模块开关。参数: state (on/off)")
+async def tool_control_iot_fan(arg: str) -> str:
+    """
+    控制智能风扇
+    """
+    from v1.logic.iot_controller import iot_manager
+    data = _parse_args(arg)
+    
+    state_str = str(data.get("state", "off")).lower()
+    on = state_str in ("on", "true", "开启", "1", "开")
+    
+    try:
+        success = await iot_manager.set_switch(on)
+        return json.dumps({
+            "status": "success" if success else "failed",
+            "message": f"蓝牙风扇已{'开启' if on else '关闭'}",
+            "device": "ESP32_Fan_Gateway",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }, ensure_ascii=False)
+    except Exception as e:
+        return f"控制失败: {str(e)}"
+
+
+@tool(name="query_fan_status", description="获取风扇电源蓝牙控制模块的当前运行状态。")
+async def tool_query_fan_status(_: str) -> str:
+    """
+    查询风扇状态
+    """
+    from v1.logic.iot_controller import iot_manager
+    try:
+        state = await iot_manager.get_status()
+        return json.dumps({
+            "device": "ESP32_Fan_Gateway",
+            "current_status": "运行中" if state == "OPEN" else "已停止",
+            "connection": "串口中继正常",
+            "last_check": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }, ensure_ascii=False)
+    except Exception as e:
+        return f"查询状态失败: {str(e)}"

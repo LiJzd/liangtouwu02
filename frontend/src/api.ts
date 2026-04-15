@@ -105,7 +105,7 @@ export const MOCK_PIGS_LIST = Array.from({ length: 100 }, (_, i) => {
 // API 服务实现
 
 // 环境变量切换：Mock vs 真实后端
-const USE_REAL_API = false; // 强制使用 Mock 数据以展示完整列表
+const USE_REAL_API = true; // 已开启真实 API 模式以对接后端
 // 模拟延迟
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

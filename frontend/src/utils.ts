@@ -25,7 +25,7 @@ interface HttpErrorInfo {
 
 // 实例化 Axios
 const http: AxiosInstance = axios.create({
-  baseURL: import.meta.env.DEV ? 'http://localhost:8080/api' : '/api', // 开发环境直接连接后端
+  baseURL: '/api', // 统一使用相对路径，由 Vite 代理解决开发环境跨域问题
   timeout: 120000, // 增加到 120 秒（2 分钟），因为 AI 生成简报需要时间
   headers: {
     'Content-Type': 'application/json',

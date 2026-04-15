@@ -17,6 +17,7 @@ from threading import Lock
 from typing import Any, Optional
 
 from v1.logic.multi_agent_core import AgentContext, MultiAgentOrchestrator
+from v1.logic.iot_controller import iot_manager
 from v1.objects.agent_simulation_schemas import (
     SimulatedAlertEvent,
     SimulationIngestResponse,
@@ -78,7 +79,9 @@ class AgentSimulationService:
             )
 
         fingerprint = self._build_fingerprint(normalized, findings)
-        duplicate_entry = self._get_duplicate(cache_key, fingerprint, thresholds.duplicate_window_seconds)
+        # 如果是强制模式，大幅缩短去重窗口（5秒），方便用户快速重复测试演示效果
+        window = 5 if event.force_mode else thresholds.duplicate_window_seconds
+        duplicate_entry = self._get_duplicate(cache_key, fingerprint, window)
         if duplicate_entry is not None:
             return SimulationIngestResponse(
                 abnormal=True,
@@ -203,6 +206,11 @@ class AgentSimulationService:
                     if isinstance(alert_payload, dict):
                         published_alert_id = alert_payload.get("id")
                     logger.info(f"模拟报警发布成功，alert_id={published_alert_id}")
+                    
+                    # 🚀 演示联动：如果是环境异常（如氨气超标），触发风扇自动旋转 15 秒
+                    if abnormal and ("环境" in str(alert_type) or "氨气" in str(alert_type) or "氨气" in str(announcement)):
+                        logger.info("检测到模拟环境预警，正在下发 15 秒自动排风任务...")
+                        asyncio.create_task(iot_manager.run_duration(15))
             except Exception as e:
                 logger.error(f"模拟报警发布失败: {e}")
         

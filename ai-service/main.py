@@ -278,6 +278,18 @@ try:
 except ImportError as e:
     logger.warning(f"agent_simulation_controller import failed: {e}")
 
+# IOT 控制模块 (蓝牙设备控制)
+try:
+    from v1.logic.iot_controller import router as iot_router
+    app.include_router(
+        iot_router,
+        prefix="/api/v1/iot",
+        tags=["IOT Control"]
+    )
+    logger.info("IOT Control 模块路由挂载成功。")
+except ImportError as e:
+    logger.warning(f"Failed to load IOT Control module: {e}")
+
 # [静态文件服务 - 调试网页]
 try:
     from fastapi.staticfiles import StaticFiles

@@ -24,7 +24,7 @@ async def ingest_simulation(payload: SimulatedAlertEvent) -> SimulationIngestRes
 async def trigger_mock_alert(
     pig_id: str = "SIM-PIG-001",
     area: str = "一号猪舍",
-    type: str = "模拟异常",
+    type: str = "模拟环境异常",
     force: bool = True
 ) -> SimulationIngestResponse:
     """

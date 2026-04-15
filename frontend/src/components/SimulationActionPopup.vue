@@ -48,8 +48,13 @@ onBeforeUnmount(() => {
         
         <div class="relative">
           <div class="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center border border-secondary/20">
-            <span class="material-symbols-outlined text-secondary text-3xl animate-spin-slow">
-              {{ detail.icon === 'fan' ? 'mode_fan' : 'settings' }}
+            <span v-if="detail" class="material-symbols-outlined text-secondary text-3xl animate-spin-slow">
+              {{ 
+                detail.icon === 'fan' ? 'mode_fan' : 
+                detail.icon === 'medical' ? 'medical_services' :
+                detail.icon === 'brain' ? 'psychology' :
+                'settings' 
+              }}
             </span>
           </div>
           <!-- 动作点动画 -->

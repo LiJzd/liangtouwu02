@@ -510,14 +510,29 @@ function connect() {
 
       const isSimulated = spoken.includes('模拟') || type.includes('模拟') || msg.includes('模拟');
       const isEnvironment = spoken.includes('环境') || type.includes('环境') || spoken.includes('氨气') || msg.includes('氨气');
+      const isHealth = spoken.includes('体温') || type.includes('体温') || spoken.includes('健康') || type.includes('健康') || spoken.includes('活跃度');
       
-      if (isSimulated && isEnvironment) {
-        console.log('%c[动作触发] 检测到模拟环境异常，执行自动排风流程预警...', 'color: #10b981; font-weight: bold;');
+      if (isSimulated) {
+        let action = '系统自动化巡检与评估';
+        let icon = 'brain';
+        
+        if (isEnvironment) {
+          action = '自动调用风扇进行排风';
+          icon = 'fan';
+        } else if (isHealth) {
+          action = '自动生成诊断建议并通知兽医';
+          icon = 'medical';
+        } else if (spoken.includes('异常') || type.includes('异常')) {
+          action = 'AI 深度分析任务下发中';
+          icon = 'brain';
+        }
+
+        console.log(`%c[动作触发] 检测到模拟告警，执行: ${action}`, 'color: #10b981; font-weight: bold;');
         window.dispatchEvent(new CustomEvent(SIMULATION_ACTION_EVENT, { 
           detail: { 
-            action: '自动调用风扇进行排风',
-            icon: 'fan',
-            target: payload.alert.area 
+            action: action,
+            icon: icon,
+            target: payload.alert.area || '实验室'
           } 
         }));
       }
@@ -525,13 +540,12 @@ function connect() {
       void drainQueue();
     }
   } catch (error) {
-    console.error('[AlertVoice] 创建SSE连接失败:', error);
+    console.error('[AlertVoice] SSE 连接发生严重错误:', error);
     alertVoiceState.connected = false;
-    alertVoiceState.lastError = '无法建立SSE连接';
+    alertVoiceState.lastError = 'SSE服务器连接异常';
     scheduleReconnect();
   }
 }
-
 
 function scheduleReconnect() {
   if (reconnectTimer !== null) {
@@ -553,6 +567,7 @@ function clearReconnectTimer() {
 }
 
 function buildApiUrl(path: string) {
-  const baseUrl = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
-  return `${baseUrl}${path}`;
+  // 统一使用相对路径 /api，由 Vite 代理 (vite.config.js) 转发到 8080
+  // 这样可以避免跨域 (CORS) 问题并简化网络配置
+  return `/api${path}`;
 }

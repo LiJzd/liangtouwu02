@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { cn } from './utils';
 import SimulationActionPopup from './components/SimulationActionPopup.vue';
+import { alertVoiceState } from './services/alertVoice';
 
 const router = useRouter();
 const route = useRoute();
@@ -71,6 +72,16 @@ function handleNavigate(path: string) {
           </button>
         </template>
       </nav>
+      
+      <!-- SSE 状态指示器 -->
+      <div class="px-3 py-2 mb-2">
+        <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-emerald-50/50 border border-emerald-100">
+          <div :class="['w-1.5 h-1.5 rounded-full', alertVoiceState.connected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-rose-500 animate-pulse']"></div>
+          <span class="text-[10px] font-bold uppercase tracking-wider" :class="alertVoiceState.connected ? 'text-emerald-700' : 'text-rose-600'">
+            {{ alertVoiceState.connected ? '实时链路正常' : '正在建立链路...' }}
+          </span>
+        </div>
+      </div>
       
       <div class="mt-auto space-y-1">
           <a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant/80 hover:text-secondary font-inter text-xs font-medium" href="#">

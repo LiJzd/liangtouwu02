@@ -224,6 +224,10 @@ class DashScopeNativeChat(BaseChatModel):
                         "id": tc.get('id', f"call_{func.get('name')}")
                     })
         
+        if not tool_calls and not content:
+            logger.warning("DashScope returned empty results, returning placeholder.")
+            content = "专家系统响应异常，请稍后刷新重试。"
+        
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=content, tool_calls=tool_calls))])
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
@@ -282,7 +286,8 @@ class SupervisorAgent:
         if any(k in text for k in ["预测", "生长", "曲线", "体重"]): return "growth_curve_agent"
         if any(k in text for k in ["档案", "列表", "查询"]): return "data_agent"
         if any(k in text for k in ["诊断", "病", "疼", "兽医"]): return "vet_agent"
-        if any(k in text for k in ["监控", "画面", "拍照", "摄像头", "硬件", "抓拍", "视频",
+        if any(k in text for k in ["监控", "画面", "拍照", "截图", "抓拍", "视频",
+                                    "风扇", "开关", "控制", "开启", "关闭", "设备", "硬件",
                                     "猪场", "全场", "看看", "看一下", "情况", "查看猪", "猪舍"]): return "hardware_agent"
         
         return "direct_reply"
@@ -303,7 +308,7 @@ class SupervisorAgent:
             "- data_agent: 查询具体的猪只档案、列表、基本信息或历史记录。\n"
             "- growth_curve_agent: 涉及体重预测、生长曲线、增重情况等预测类问题。\n"
             "- briefing_agent: 请求日报、简报、生产总结或全场数据汇总。\n"
-            "- hardware_agent: 涉及监控摄像头、视频抓拍、画面查看或硬件设备状态。\n"
+            "- hardware_agent: 涉及监控摄像头、视频抓拍、画面查看，以及风扇、电源开关等硬件设备的控制与状态查询。\n"
             "- direct_reply: 简单的寒暄、问好，或不属于上述范围的通用指令。\n\n"
             "仅返回分类标识符，不要返回任何其他文字。如果无法确定，返回 unknown。"
         )
@@ -819,19 +824,19 @@ class GrowthCurveAgent(WorkerAgent):
 class HardwareAgent(WorkerAgent):
     def __init__(self):
         system_prompt = (
-            "你是猪场硬件与视觉专家。当前已成功接入 2 号猪舍的海康威视实时物理监控（IP: 192.168.1.64）。\n"
+            "你是猪场硬件与物理接口专家。你不仅管理着 2 号猪舍的海康威视实时物理监控，还负责管理全场的 IOT 设备（如风扇、通风系统）。\n"
             "请注意：\n"
-            "- 你现在拥有调度真实硬件的能力，不再依赖模拟视频。\n"
-            "- 当用户要求查看监控、截图或进行视觉检测时，直接调用 capture_pig_farm_snapshot 工具获取实时画面。\n"
-            "- 若抓拍失败，系统会自动切换至高保真模拟流作为备份，你无需向用户解释底层切换逻辑，保持专业和自信。\n"
-            "- 严禁提及或调取‘1号猪舍’或其他未授权区域的数据。"
+            "- 你现在拥有调度真实硬件（视频与开关）的能力。\n"
+            "- 当用户要求开启/关闭风扇或查询设备状态时，直接调用对应的 IOT 控制工具。\n"
+            "- 当用户要求查看监控时，调用 capture_pig_farm_snapshot 工具获取实时画面。\n"
+            "- 保持专业，若硬件响应超时，系统会自动处理，你只需向用户汇报最终结果。"
         )
         super().__init__("HardwareAgent", system_prompt, [])
     def get_tools(self) -> List[LCTool]:
         from v1.logic.bot_tools import list_tools
         at = list_tools()
-        # 硬件专家拥有视觉抓拍和环境感知工具权限
-        return [LCTool(name=at[n].name, description=at[n].description, func=lambda x: "Sync not supported", coroutine=at[n].handler) for n in ["capture_pig_farm_snapshot", "query_env_status"] if n in at]
+        # 硬件专家拥有视觉抓拍、环境感知以及 IOT 控制工具权限
+        return [LCTool(name=at[n].name, description=at[n].description, func=lambda x: "Sync not supported", coroutine=at[n].handler) for n in ["capture_pig_farm_snapshot", "query_env_status", "control_iot_fan", "query_fan_status"] if n in at]
 
     async def execute(self, context: AgentContext, max_iterations: int = 5) -> AgentResult:
         """极速路径：直接执行截图与环境调取"""
@@ -898,6 +903,32 @@ class HardwareAgent(WorkerAgent):
             except Exception as e:
                 logger.error(f"HardwareAgent fast-track env failed: {e}")
                 return AgentResult(success=False, answer=f"环境传感器调取失败: {str(e)}", worker_name=self.name)
+
+        # 匹配 IOT 控制关键词 (风扇/开关) - 演示现场急速控制路径
+        if any(k in context.user_input for k in ["风扇", "开关", "启动", "停止", "开启", "关闭"]):
+            from v1.logic.iot_controller import iot_manager, SERIAL_PORT
+            
+            # 简单的意图提取
+            is_on = any(k in context.user_input for k in ["开启", "启动", "打开", "1", "开"])
+            if "关" in context.user_input or "停" in context.user_input or "0" in context.user_input:
+                is_on = False
+            
+            await push_debug_event("thought", {"content": "检测到硬件控制指令，正在绕过云端推理，直接激活物理控制链路..."}, context.client_id, agent=self.name, status="急速控制")
+            await asyncio.sleep(0.5)
+            
+            try:
+                success = await iot_manager.set_switch(is_on)
+                if success:
+                    msg = f"已成功发送物理指令：{'开启' if is_on else '关闭'}风扇。"
+                    await push_debug_event("observation", {"output": msg}, context.client_id, agent=self.name)
+                    return AgentResult(success=True, answer=f"✅ {msg} 硬件响应正常，已实时同步至猪舍终端。", worker_name=self.name)
+                else:
+                    msg = "硬件链路响应异常，请检查 ESP32 是否在线。"
+                    await push_debug_event("observation", {"output": msg}, context.client_id, agent=self.name)
+                    return AgentResult(success=True, answer=f"⚠️ {msg} (串口: {SERIAL_PORT})", worker_name=self.name)
+            except Exception as e:
+                logger.error(f"HardwareAgent IOT fast-track failed: {e}")
+                return AgentResult(success=False, answer=f"硬件控制失败: {str(e)}", worker_name=self.name)
 
         # 兜底：走常规 ReAct 流程 (虽然此时 streaming=False 更稳定)
         return await super().execute(context)
