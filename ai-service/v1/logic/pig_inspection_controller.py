@@ -184,7 +184,10 @@ async def generate_inspection_report_stream(request: InspectionRequest):
                         text = event["data"].get("text", "")
                         full_report += text
                         yield _fmt_sse("chunk", {"text": text})
-                        await asyncio.sleep(0.05)
+                        # 后端应尽快将队列排空送往前端，打字机节奏由前端 Vue 组件统一控制
+                    elif event["type"] == "curve_data":
+                        # [Speed Optimization] 直接转发曲线原始数据包
+                        yield _fmt_sse("curve_data", event["data"])
                     elif event["type"] in ["thought", "observation", "connected", "debug_event"]:
                         # 转发思维链追踪事件
                         yield _fmt_sse("trace", {

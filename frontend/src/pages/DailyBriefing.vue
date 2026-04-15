@@ -66,6 +66,10 @@ const startDisplayEngine = () => {
     // 检查停止条件
     if (!isGenerating.value && contentQueue.value.length === 0 && traceQueue.value.length === 0) {
       streamStatus.value = '分析报告已生成完成';
+      // [Fix] 动画结束后将完整内容同步到选中对象，防止 isStreaming 状态切换导致显示空白
+      if (selectedBriefing.value) {
+        selectedBriefing.value.content = bufferedContent.value;
+      }
       displayTimeout.value = null;
       isStreaming.value = false; // 只有在动画也完成后才重置此状态
       return;
@@ -167,14 +171,18 @@ const triggerNew = async () => {
         }
       } else if (event.event === 'done') {
         isGenerating.value = false;
-        // 如果加速模式，强制同步最后的内容
-        if (isSkipping.value) {
+        // 如果加速模式，强制立即同步最后的内容
+        if (isSkipping.value && selectedBriefing.value) {
             selectedBriefing.value.content = bufferedContent.value;
         }
       } else if (event.event === 'error') {
         streamError.value = event.data?.detail || event.data?.message || '生成异常';
         isGenerating.value = false;
         isStreaming.value = false;
+        // 发生错误时也将已生成的内容保存下来
+        if (selectedBriefing.value) {
+            selectedBriefing.value.content = bufferedContent.value;
+        }
       }
     }, traceId);
   } catch (e: any) {

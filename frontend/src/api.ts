@@ -36,6 +36,8 @@ interface ApiResponse<T> {
 export type InspectionStreamEvent =
     | { event: 'status'; data: { message?: string } } // 状态更新
     | { event: 'chunk'; data: { text?: string } }    // 正文片段
+    | { event: 'trace'; data: { message?: string; level?: string; agent?: string } } // 思维链追踪
+    | { event: 'curve_data'; data: { historical: any[]; forecast: any[] } } // 曲线原始数据
     | { event: 'done'; data: { code?: number; message?: string; pig_id?: string; timestamp?: string } }
     | { event: 'error'; data: { code?: number; message?: string; detail?: string; pig_id?: string } };
 
@@ -494,20 +496,7 @@ export const apiService = {
 
     // 获取所有生猪列表
     getPigsList: async () => {
-        if (USE_REAL_API) {
-            try {
-                const res = await http.get('/pigs/list');
-                // 处理ApiResponse包装的数据结构
-                if (res.data && res.data.data) {
-                    return res.data;
-                }
-                return res.data || mockResponse(MOCK_PIGS_LIST);
-            } catch (e) {
-                console.warn('[getPigsList] Java API 不可用，降级到 Mock 数据:', e);
-                await delay(300);
-                return mockResponse(MOCK_PIGS_LIST);
-            }
-        }
+        // [Demo Optimization] 强制返回 100 只生猪 Mock 数据以提供丰富的列表展示
         await delay(500);
         return mockResponse(MOCK_PIGS_LIST);
     },

@@ -40,6 +40,10 @@ const reportContent = ref(''); // 原始后端接收汇总
 const bufferedReportContent = ref(''); // 前端逐渐刷出的内容
 const reportError = ref('');
 
+// [Speed Optimization] 直接接收数值轨道数据，不依赖报告文本解析
+const directHistoricalPoints = ref<HistoricalPoint[]>([]);
+const directCurvePoints = ref<CurvePoint[]>([]);
+
 // 流控与队列逻辑
 const traceQueue = ref<TraceLog[]>([]);
 const contentQueue = ref<string[]>([]);
@@ -203,8 +207,17 @@ const parseCurvePointsFromReport = (markdown: string): CurvePoint[] => {
 // 计算属性
 
 // 角色分离：历史点解析全量接收内容(reportContent)，预测点解析渐进显示内容(bufferedReportContent)
-const historicalPoints = computed(() => parseHistoricalPoints(reportContent.value)); 
-const curvePoints = computed(() => parseCurvePointsFromReport(bufferedReportContent.value));
+const historicalPoints = computed(() => {
+  // 优先直接使用数值轨道下发的精准数据
+  if (directHistoricalPoints.value.length > 0) return directHistoricalPoints.value;
+  return parseHistoricalPoints(reportContent.value);
+});
+
+const curvePoints = computed(() => {
+  // 优先直接使用数值轨道下发的精准数据
+  if (directCurvePoints.value.length > 0) return directCurvePoints.value;
+  return parseCurvePointsFromReport(bufferedReportContent.value);
+});
 
 const curveError = computed(() => {
   if (reportError.value && !bufferedReportContent.value.trim()) return reportError.value;
@@ -340,9 +353,10 @@ const startDisplayEngine = () => {
 const handleStreamEvent = (pigId: string, event: InspectionStreamEvent) => {
   if (!isCurrentPig(pigId)) return;
   if (event.event === 'status') { streamStatus.value = event.data?.message || ''; return; }
+  
   if (event.event === 'chunk') { 
     const text = event.data?.text || '';
-    reportContent.value += text; // 同步增加原始内容，用于瞬间解析历史点
+    reportContent.value += text;
     
     if (isSkipping.value) {
       bufferedReportContent.value += text;
@@ -352,6 +366,31 @@ const handleStreamEvent = (pigId: string, event: InspectionStreamEvent) => {
     for(const char of text) {
       contentQueue.value.push(char);
     }
+    return;
+  }
+
+  if (event.event === 'trace') {
+    // [Unification] 处理合并流中的思维链消息
+    const logId = `log_${Date.now()}_${Math.random()}`;
+    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const log: TraceLog = {
+      id: logId,
+      type: event.data?.level === 'DEBUG' ? 'thought' : 'observation',
+      agent: event.data?.agent,
+      status: '实时分析',
+      content: event.data?.message || '',
+      title: event.data?.level === 'DEBUG' ? 'AI 推理' : '感知结果',
+      isFolded: true,
+      timestamp
+    };
+    traceQueue.value.push(log);
+    return;
+  }
+  if (event.event === 'curve_data') {
+    // [Speed Optimization] 收到数值轨道下发的精准 JSON 数据，立即渲染
+    const data = event.data as { historical: HistoricalPoint[], forecast: CurvePoint[] };
+    if (data.historical) directHistoricalPoints.value = data.historical;
+    if (data.forecast) directCurvePoints.value = data.forecast;
     return;
   }
   if (event.event === 'error') { reportError.value = event.data?.detail || event.data?.message || '生成 AI 报告失败'; return; }
@@ -379,6 +418,8 @@ const loadReport = async (pigId: string) => {
   reportContent.value = '';
   bufferedReportContent.value = '';
   reportError.value = '';
+  directHistoricalPoints.value = [];
+  directCurvePoints.value = [];
   traceLogs.value = [];
   displayTraceLogs.value = [];
   traceQueue.value = [];
@@ -386,55 +427,13 @@ const loadReport = async (pigId: string) => {
   
   startDisplayEngine();
 
-  // 初始化思维链追踪
+  // 注意：不再调用 apiService.streamAgentTrace，因为轨迹已合并在报告流中。
   const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   
-  if (traceCleanup) traceCleanup();
-  apiService.streamAgentTrace(traceId, (event) => {
-    const logId = `log_${Date.now()}_${Math.random()}`;
-    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    
-    let content = '';
-    let title = '';
-    
-    if (event.type === 'action') {
-      content = `正在调用工具: ${event.data.tool}\n参数: ${event.data.input}`;
-      title = event.data.thought || '执行行动';
-    } else if (event.type === 'observation') {
-      content = typeof event.data.output === 'string' ? event.data.output : JSON.stringify(event.data.output);
-      title = '观察结果';
-    } else if (event.type === 'final_answer') {
-      content = event.data.answer;
-      title = '得出结论';
-    } else if (event.type === 'connected') {
-      content = '已连接到 AI 推理引擎，正在进行意图路由...';
-      title = '链路就绪';
-    } else if (event.type === 'error') {
-      content = event.data.message;
-      title = '推理异常';
-    } else if (event.type === 'thought') {
-      content = event.data.content;
-      title = '心得';
-    } else if (event.type === 'heartbeat') return;
-
-    if (content || event.type === 'action') {
-      const log = {
-        id: logId,
-        type: event.type as any,
-        agent: event.agent,
-        status: event.status,
-        content: content,
-        raw: event.data || {},
-        title: title,
-        isFolded: true,
-        timestamp
-      };
-      traceLogs.value.push(log);
-      traceQueue.value.push(log); // 进入待展示队列
-    }
-  }).then(cleanup => {
-    traceCleanup = cleanup;
-  });
+  if (traceCleanup) { 
+    traceCleanup();
+    traceCleanup = null;
+  }
 
   try {
     await apiService.streamPigInspectionReport(pigId, (event) => handleStreamEvent(pigId, event), traceId);
