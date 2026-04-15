@@ -68,7 +68,36 @@ async function loadAlerts() {
   try {
     const response = await apiService.getAlerts();
     const payload = Array.isArray(response?.data) ? response.data : [];
-    allAlerts.value = [...payload].sort((left, right) => Number(right.id) - Number(left.id));
+    
+    // === 补偿由于后端或API过滤规则导致丢失的模拟报警事件 ===
+    const rawCache = window.sessionStorage.getItem('liangtouwu-pigbot-alert-cache');
+    const cachedSimulatedAlerts: Alert[] = [];
+    if (rawCache) {
+      try {
+        const parsed = JSON.parse(rawCache);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item: any) => {
+            if (item && item.alert) {
+              // 为了确保所有通过接口实触发的告警（即便是未显式包含“模拟”字样）
+              // 都能在通过刷新或页面加载时恢复，我们放宽限制，将所有缓存事件均纳入补偿
+              cachedSimulatedAlerts.push(item.alert);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('解析本地告警缓存失败', e);
+      }
+    }
+
+    const mergedMap = new Map<number | string, Alert>();
+    payload.forEach((a) => mergedMap.set(a.id, a));
+    cachedSimulatedAlerts.forEach((a) => {
+      if (!mergedMap.has(a.id)) {
+        mergedMap.set(a.id, a);
+      }
+    });
+
+    allAlerts.value = Array.from(mergedMap.values()).sort((left, right) => Number(right.id) - Number(left.id));
   } catch (error) {
     console.error('Failed to load alerts:', error);
   } finally {
@@ -78,6 +107,7 @@ async function loadAlerts() {
 
 function handleRealtimeAlert(event: Event) {
   const incoming = (event as CustomEvent<Alert>).detail;
+  console.log('[AlertsPage] 实时监听到告警事件推送:', incoming);
   if (!incoming) {
     return;
   }
@@ -161,8 +191,10 @@ async function onClearAll() {
   }
 }
 
+
 onMounted(() => {
   void loadAlerts();
+  // 主要告警监听
   window.addEventListener(ALERT_RECEIVED_EVENT, handleRealtimeAlert as EventListener);
 });
 
@@ -244,6 +276,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="flex items-center space-x-2">
+
           <button
             v-if="selectedIds.length > 0"
             @click="onBatchDelete"

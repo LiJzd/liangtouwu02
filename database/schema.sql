@@ -79,13 +79,13 @@ VALUES ('admin', '$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.vK56.vT.4/E7fX8K0Z0D8T.',
 -- 初始猪只数据 (扩容至 10 头以展示群体规模)
 INSERT IGNORE INTO pig (id, breed, score, issue, body_temp, activity_level, lifecycle) VALUES
 ('PIG001', '两头乌', 95, '健康', 38.5, 80, JSON_ARRAY(
-    JSON_OBJECT('month', 1, 'feed_count', 45, 'feed_duration_mins', 280, 'water_count', 80, 'water_duration_mins', 160, 'weight_kg', 28.5),
-    JSON_OBJECT('month', 2, 'feed_count', 50, 'feed_duration_mins', 320, 'water_count', 88, 'water_duration_mins', 175, 'weight_kg', 38.2),
-    JSON_OBJECT('month', 3, 'feed_count', 52, 'feed_duration_mins', 340, 'water_count', 92, 'water_duration_mins', 185, 'weight_kg', 45.0)
+    JSON_OBJECT('month', 1, 'feed_count', 45, 'feed_duration_mins', 280, 'water_count', 80, 'water_duration_mins', 160, 'weight_kg', 12.5),
+    JSON_OBJECT('month', 2, 'feed_count', 50, 'feed_duration_mins', 320, 'water_count', 88, 'water_duration_mins', 175, 'weight_kg', 24.8),
+    JSON_OBJECT('month', 3, 'feed_count', 52, 'feed_duration_mins', 340, 'water_count', 92, 'water_duration_mins', 185, 'weight_kg', 38.2)
 )),
 ('PIG002', '两头乌', 60, '疑似温热', 39.8, 30, JSON_ARRAY(
-    JSON_OBJECT('month', 1, 'feed_count', 48, 'feed_duration_mins', 300, 'water_count', 85, 'water_duration_mins', 170, 'weight_kg', 30.0),
-    JSON_OBJECT('month', 2, 'feed_count', 54, 'feed_duration_mins', 355, 'water_count', 93, 'water_duration_mins', 198, 'weight_kg', 40.5)
+    JSON_OBJECT('month', 1, 'feed_count', 48, 'feed_duration_mins', 300, 'water_count', 85, 'water_duration_mins', 170, 'weight_kg', 13.2),
+    JSON_OBJECT('month', 2, 'feed_count', 54, 'feed_duration_mins', 355, 'water_count', 93, 'water_duration_mins', 198, 'weight_kg', 25.5)
 )),
 ('PIG003', '两头乌', 98, '健康', 38.4, 85, NULL),
 ('PIG004', '两头乌', 92, '健康', 38.6, 78, NULL),

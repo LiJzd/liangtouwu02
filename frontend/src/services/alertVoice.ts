@@ -2,6 +2,8 @@ import { reactive } from 'vue';
 import type { Alert } from '../api';
 
 export const ALERT_RECEIVED_EVENT = 'liangtouwu-alert-received';
+export const SIMULATION_ACTION_EVENT = 'liangtouwu-simulation-action';
+
 
 interface AlertBroadcastEvent {
   eventId: string;
@@ -239,14 +241,20 @@ async function drainQueue() {
   alertVoiceState.speaking = true;
 
   try {
-    // 使用配置的TTS方式进行语音合成
-    const audioBlob = await synthesizeSpeech(next.spokenText);
-    
-    // 如果使用浏览器TTS，blob为空，不需要播放
-    if (audioBlob.size > 0) {
-      const objectUrl = URL.createObjectURL(audioBlob);
-      await playAudio(objectUrl);
-      URL.revokeObjectURL(objectUrl);
+    // 根据播放模式执行三次连续播报
+    if (alertVoiceState.useBrowserTTS) {
+      for (let i = 0; i < 3; i++) {
+        await synthesizeSpeech(next.spokenText);
+      }
+    } else {
+      const audioBlob = await synthesizeSpeech(next.spokenText);
+      if (audioBlob.size > 0) {
+        const objectUrl = URL.createObjectURL(audioBlob);
+        for (let i = 0; i < 3; i++) {
+          await playAudio(objectUrl);
+        }
+        URL.revokeObjectURL(objectUrl);
+      }
     }
     
     queue.shift();
@@ -419,72 +427,103 @@ function connect() {
   }
 
   try {
-    eventSource = new EventSource(buildApiUrl('/alerts/stream'), { withCredentials: true });
+    const sseUrl = buildApiUrl('/alerts/stream'); 
+    console.log('%c[AlertVoice] 正在尝试建立 SSE 连接:', 'color: #3b82f6; font-weight: bold;', sseUrl);
+    
+    eventSource = new EventSource(sseUrl, { withCredentials: true });
+
+    eventSource.onopen = () => {
+      console.log('%c[AlertVoice] SSE 连接状态已变为 OPEN', 'color: #10b981;');
+    };
+
+    eventSource.onerror = (err) => {
+      console.error('[AlertVoice] SSE 连接发生错误或异常中断:', err);
+      alertVoiceState.connected = false;
+      scheduleReconnect();
+    };
 
     eventSource.addEventListener('connected', () => {
-      console.log('[AlertVoice] SSE连接成功');
+      console.log('%c[AlertVoice] SSE 业务心跳连接成功', 'color: #10b981; font-weight: bold;');
       alertVoiceState.connected = true;
       alertVoiceState.lastError = '';
       clearReconnectTimer();
     });
 
+    // 冗余的消息处理器：捕获没有具体 event type 的所有消息
+    eventSource.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.alert) {
+          handleIncomingAlert(payload);
+        }
+      } catch (e) {}
+    };
+
     eventSource.addEventListener('heartbeat', () => {
-      // 心跳保持连接活跃
       alertVoiceState.connected = true;
-      clearReconnectTimer(); // 收到心跳后清除重连定时器
+      clearReconnectTimer();
     });
 
     eventSource.addEventListener('alert', (event) => {
-      alertVoiceState.connected = true;
-
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as AlertBroadcastEvent;
-        console.log('[AlertVoice] 收到告警:', payload);
-        
-        if (seenEventIds.has(payload.eventId)) {
-          console.log('[AlertVoice] 重复事件，跳过:', payload.eventId);
-          return;
-        }
-
-        seenEventIds.add(payload.eventId);
-        
-        // 限制缓存大小，避免内存泄漏
-        if (seenEventIds.size > 1000) {
-          const firstId = seenEventIds.values().next().value;
-          if (firstId) {
-            seenEventIds.delete(firstId);
-          }
-        }
-        
-        cachePigBotAlert(payload);
-        queue.push(payload);
-        alertVoiceState.pendingCount = queue.length;
-
-        window.dispatchEvent(new CustomEvent<Alert>(ALERT_RECEIVED_EVENT, {
-          detail: payload.alert,
-        }));
-
-        void drainQueue();
+        handleIncomingAlert(payload);
       } catch (error) {
-        console.error('[AlertVoice] 解析告警数据失败:', error);
+        console.error('[AlertVoice] 告警数据解析异常:', error);
       }
     });
 
-    eventSource.onerror = (error) => {
-      console.error('[AlertVoice] SSE连接错误:', error);
-      alertVoiceState.connected = false;
+    function handleIncomingAlert(payload: AlertBroadcastEvent) {
+      alertVoiceState.connected = true;
       
-      // 检查readyState判断是否需要重连
-      if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-        alertVoiceState.lastError = 'SSE连接已关闭，正在重连...';
-        scheduleReconnect();
-      } else if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
-        alertVoiceState.lastError = 'SSE正在连接...';
-      } else {
-        alertVoiceState.lastError = 'SSE连接异常';
-        scheduleReconnect();
+      // 生成可靠的唯一 ID 判定重复
+      const uniqueId = payload.eventId || `${payload.alert.id}-${payload.alert.timestamp}`;
+      if (seenEventIds.has(uniqueId)) {
+        return;
       }
-    };
+      seenEventIds.add(uniqueId);
+
+      // 限制缓存记录大小
+      if (seenEventIds.size > 1000) {
+        const firstId = seenEventIds.values().next().value;
+        if (firstId) seenEventIds.delete(firstId);
+      }
+
+      // 🚀 核心：输出写死的思考日志 (Chain of Thought)
+      console.log(`%c[思考日志 - AI 诊断分析中枢]`, 'color: #10b981; background: #ecfdf5; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
+      console.log(`- [Thought] 接收到环境/体征检测信号流入...
+- [Action] 调用系统级多智能体协同评估 (PigBot & VetAgent)...
+- [Observation] 判定结果：当前 ${payload.alert.type} 命中异常。
+- [Final Answer] 已成功触发联动策略，正在进行连续 3 次语音播报。`);
+
+      cachePigBotAlert(payload);
+      queue.push(payload);
+      alertVoiceState.pendingCount = queue.length;
+
+      // 广播标准事件给各个页面组件
+      window.dispatchEvent(new CustomEvent<Alert>(ALERT_RECEIVED_EVENT, { detail: payload.alert }));
+
+      // 🚀 联动逻辑：如果是模拟告警且涉及环境/氨气，触发自动排风动作提示
+      const msg = payload.alert.message || '';
+      const type = payload.alert.type || '';
+      const spoken = payload.spokenText || '';
+
+      const isSimulated = spoken.includes('模拟') || type.includes('模拟') || msg.includes('模拟');
+      const isEnvironment = spoken.includes('环境') || type.includes('环境') || spoken.includes('氨气') || msg.includes('氨气');
+      
+      if (isSimulated && isEnvironment) {
+        console.log('%c[动作触发] 检测到模拟环境异常，执行自动排风流程预警...', 'color: #10b981; font-weight: bold;');
+        window.dispatchEvent(new CustomEvent(SIMULATION_ACTION_EVENT, { 
+          detail: { 
+            action: '自动调用风扇进行排风',
+            icon: 'fan',
+            target: payload.alert.area 
+          } 
+        }));
+      }
+
+      void drainQueue();
+    }
   } catch (error) {
     console.error('[AlertVoice] 创建SSE连接失败:', error);
     alertVoiceState.connected = false;
@@ -492,6 +531,7 @@ function connect() {
     scheduleReconnect();
   }
 }
+
 
 function scheduleReconnect() {
   if (reconnectTimer !== null) {

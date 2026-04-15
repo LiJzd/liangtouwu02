@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         runBasic();
 
-        // --- 3. 右侧：React 模板大模型 ---
+        // --- 3. 右侧：注入 React 模板的智能体 ---
         const reactWrapper = document.createElement('div');
         reactWrapper.className = 'message bot react-chain';
         chatRight.appendChild(reactWrapper);

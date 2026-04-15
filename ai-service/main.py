@@ -309,7 +309,7 @@ if __name__ == "__main__":
 
     print(f"--- 正在使用原生入口启动 AI 服务 (Python {sys.version.split()[0]}) ---")
     uvicorn.run(
-        app, 
+        "main:app", 
         host=settings.host,
         port=settings.port,
         reload=False, 

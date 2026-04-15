@@ -28,15 +28,15 @@
 }
 
 .stat-label {
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.5);
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.6);
     text-transform: uppercase;
     font-weight: 700;
 }
 
 .stat-value {
     font-family: 'Outfit', sans-serif;
-    font-size: 1.5rem;
+    font-size: 1.8rem;
     font-weight: 800;
     color: var(--neon-cyan);
 }
@@ -75,17 +75,17 @@
 }
 
 .slider-label {
-    font-size: 0.85rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: var(--neon-cyan);
 }
 
 .slider-value {
     font-family: 'Fira Code', monospace;
-    font-size: 1rem;
+    font-size: 1.3rem;
     color: var(--neon-amber);
     background: rgba(255, 170, 0, 0.1);
-    padding: 2px 8px;
+    padding: 4px 12px;
     border: 1px solid rgba(255, 170, 0, 0.3);
 }
 
@@ -102,21 +102,21 @@ input[type=range]:focus {
 
 input[type=range]::-webkit-slider-runnable-track {
     width: 100%;
-    height: 4px;
+    height: 6px;
     cursor: pointer;
     background: rgba(0, 242, 255, 0.2);
-    border-radius: 2px;
+    border-radius: 3px;
 }
 
 input[type=range]::-webkit-slider-thumb {
-    height: 18px;
-    width: 18px;
+    height: 24px;
+    width: 24px;
     border-radius: 50%;
     background: var(--neon-cyan);
     cursor: pointer;
     -webkit-appearance: none;
-    margin-top: -7px;
-    box-shadow: 0 0 10px var(--neon-cyan);
+    margin-top: -9px;
+    box-shadow: 0 0 15px var(--neon-cyan);
 }
 
 input[type=range]:active::-webkit-slider-thumb {
@@ -127,8 +127,8 @@ input[type=range]:active::-webkit-slider-thumb {
     display: flex;
     justify-content: space-between;
     padding: 0 5px;
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.3);
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.6);
 }
 
 @media (max-width: 1200px) {

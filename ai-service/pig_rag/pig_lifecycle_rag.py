@@ -58,24 +58,24 @@ MOCK_PIG_LIFECYCLE_DATA: list[dict[str, Any]] = [
         "pig_id": "pig_lc_001",
         "breed": "杜洛克",
         "lifecycle": [
-            {"month": 1, "feed_count": 45, "feed_duration_mins": 270, "weight_kg": 28.0, "status": "生长中"},
-            {"month": 2, "feed_count": 52, "feed_duration_mins": 340, "weight_kg": 45.0, "status": "生长中"},
-            {"month": 3, "feed_count": 58, "feed_duration_mins": 400, "weight_kg": 68.0, "status": "生长中"},
-            {"month": 4, "feed_count": 60, "feed_duration_mins": 430, "weight_kg": 92.0, "status": "生长中"},
-            {"month": 5, "feed_count": 55, "feed_duration_mins": 390, "weight_kg": 115.0, "status": "出厂"},
+            {"month": 1, "feed_count": 45, "feed_duration_mins": 270, "weight_kg": 28.2, "status": "生长中"},
+            {"month": 2, "feed_count": 52, "feed_duration_mins": 340, "weight_kg": 48.5, "status": "生长中"},
+            {"month": 3, "feed_count": 58, "feed_duration_mins": 400, "weight_kg": 72.3, "status": "生长中"},
+            {"month": 4, "feed_count": 60, "feed_duration_mins": 430, "weight_kg": 96.8, "status": "生长中"},
+            {"month": 5, "feed_count": 55, "feed_duration_mins": 390, "weight_kg": 118.5, "status": "出厂"},
         ],
     },
     {
         "pig_id": "pig_lc_005",
         "breed": "两头乌", # 重点关注品种
         "lifecycle": [
-            {"month": 1, "feed_count": 38, "feed_duration_mins": 230, "weight_kg": 20.0, "status": "生长中"},
-            {"month": 2, "feed_count": 42, "feed_duration_mins": 265, "weight_kg": 32.0, "status": "生长中"},
-            {"month": 3, "feed_count": 46, "feed_duration_mins": 295, "weight_kg": 46.0, "status": "生长中"},
-            {"month": 4, "feed_count": 48, "feed_duration_mins": 310, "weight_kg": 60.0, "status": "生长中"},
-            {"month": 5, "feed_count": 50, "feed_duration_mins": 325, "weight_kg": 74.0, "status": "生长中"},
-            {"month": 6, "feed_count": 48, "feed_duration_mins": 308, "weight_kg": 88.0, "status": "生长中"},
-            {"month": 7, "feed_count": 45, "feed_duration_mins": 285, "weight_kg": 100.0, "status": "出厂"},
+            {"month": 1, "feed_count": 38, "feed_duration_mins": 230, "weight_kg": 12.5, "status": "生长中"},
+            {"month": 2, "feed_count": 42, "feed_duration_mins": 265, "weight_kg": 24.8, "status": "生长中"},
+            {"month": 3, "feed_count": 46, "feed_duration_mins": 295, "weight_kg": 38.2, "status": "生长中"},
+            {"month": 4, "feed_count": 48, "feed_duration_mins": 310, "weight_kg": 52.6, "status": "生长中"},
+            {"month": 5, "feed_count": 50, "feed_duration_mins": 325, "weight_kg": 66.8, "status": "生长中"},
+            {"month": 6, "feed_count": 48, "feed_duration_mins": 308, "weight_kg": 78.3, "status": "生长中"},
+            {"month": 7, "feed_count": 45, "feed_duration_mins": 285, "weight_kg": 88.0, "status": "出厂"},
         ],
     }
 ]
