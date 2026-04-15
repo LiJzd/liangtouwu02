@@ -36,8 +36,16 @@ const pigsError = ref('');
 const selectedPig = ref<PigInfo | null>(null);
 const isGeneratingReport = ref(false);
 const streamStatus = ref('');
-const reportContent = ref('');
+const reportContent = ref(''); // 原始后端接收汇总
+const bufferedReportContent = ref(''); // 前端逐渐刷出的内容
 const reportError = ref('');
+
+// 流控与队列逻辑
+const traceQueue = ref<TraceLog[]>([]);
+const contentQueue = ref<string[]>([]);
+const isTraceDone = ref(false);
+const isSkipping = ref(false); // 是否跳过动画
+let displayTimeout: any = null;
 
 // 思维链日志状态
 interface TraceLog {
@@ -51,7 +59,8 @@ interface TraceLog {
   isFolded: boolean;   // 是否折叠详情
   raw?: any;
 }
-const traceLogs = ref<TraceLog[]>([]);
+const traceLogs = ref<TraceLog[]>([]); // 原始接收
+const displayTraceLogs = ref<TraceLog[]>([]); // 控制台展示用
 let traceCleanup: (() => void) | null = null;
 
 // ECharts 实例及引用
@@ -193,12 +202,13 @@ const parseCurvePointsFromReport = (markdown: string): CurvePoint[] => {
 
 // 计算属性
 
-const historicalPoints = computed(() => parseHistoricalPoints(reportContent.value));
-const curvePoints = computed(() => parseCurvePointsFromReport(reportContent.value));
+// 角色分离：历史点解析全量接收内容(reportContent)，预测点解析渐进显示内容(bufferedReportContent)
+const historicalPoints = computed(() => parseHistoricalPoints(reportContent.value)); 
+const curvePoints = computed(() => parseCurvePointsFromReport(bufferedReportContent.value));
 
 const curveError = computed(() => {
-  if (reportError.value && !reportContent.value.trim()) return reportError.value;
-  if (!isGeneratingReport.value && reportContent.value.trim() && !curvePoints.value.length) {
+  if (reportError.value && !bufferedReportContent.value.trim()) return reportError.value;
+  if (!isGeneratingReport.value && bufferedReportContent.value.trim() && !curvePoints.value.length) {
     return 'AI 报告中未找到可解析的生长曲线数据。';
   }
   return '';
@@ -255,10 +265,95 @@ const loadPigs = async () => {
   }
 };
 
+const skipAnimation = () => {
+  isSkipping.value = true;
+  // 线索处理：将全量 trace 一口气送入显示层，且设为非折叠？不，保持原样但立即推入
+  while (traceQueue.value.length > 0) {
+    const t = traceQueue.value.shift();
+    if (t) displayTraceLogs.value.push(t);
+  }
+  // 正文处理：直接合并剩余字符
+  if (contentQueue.value.length > 0) {
+    bufferedReportContent.value += contentQueue.value.join('');
+    contentQueue.value = [];
+  }
+  isTraceDone.value = true;
+  if (displayTimeout) clearTimeout(displayTimeout);
+};
+
+const startDisplayEngine = () => {
+  if (displayTimeout) clearTimeout(displayTimeout);
+  isTraceDone.value = false;
+  isSkipping.value = false;
+  
+  const processNext = () => {
+    const nextDelay = isSkipping.value ? 0 : null;
+
+    // 1. 优先处理思维链 (Trace)
+    if (traceQueue.value.length > 0) {
+      const nextTrace = traceQueue.value.shift();
+      if (nextTrace) {
+        displayTraceLogs.value.push(nextTrace);
+        nextTick(() => {
+          const panel = document.querySelector('.trace-container');
+          if (panel) panel.scrollTop = panel.scrollHeight;
+        });
+      }
+      // 关键停顿：思维节点强制停留 0.8s - 1.5s
+      const delay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 700) + 800);
+      displayTimeout = setTimeout(processNext, delay);
+      return;
+    }
+
+    // 2. 状态切换
+    if (!isTraceDone.value && traceQueue.value.length === 0 && !isGeneratingReport.value) {
+       isTraceDone.value = true;
+    }
+    
+    // 3. 处理正文 (Content Typewriter)
+    const canStartContent = isTraceDone.value || (traceQueue.value.length === 0 && contentQueue.value.length > 5);
+    if (canStartContent) {
+       if (contentQueue.value.length > 0) {
+          isTraceDone.value = true;
+          const chunk = contentQueue.value.shift() || '';
+          bufferedReportContent.value += chunk;
+          
+          // 打字机速度：50ms - 80ms
+          const charDelay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 30) + 50);
+          displayTimeout = setTimeout(processNext, charDelay);
+       } else if (!isGeneratingReport.value) {
+          // 全部完成
+          displayTimeout = null;
+       } else {
+          // 等待后端产生新内容
+          displayTimeout = setTimeout(processNext, 100);
+       }
+    } else {
+      // 继续等待 Trace 处理或后端连接
+      displayTimeout = setTimeout(processNext, 100);
+    }
+  };
+
+  processNext();
+};
+
 const handleStreamEvent = (pigId: string, event: InspectionStreamEvent) => {
   if (!isCurrentPig(pigId)) return;
   if (event.event === 'status') { streamStatus.value = event.data?.message || ''; return; }
-  if (event.event === 'chunk') { reportContent.value += event.data?.text || ''; return; }
+  if (event.event === 'chunk') { 
+    const text = event.data?.text || '';
+    reportContent.value += text; // 同步增加原始内容，用于瞬间解析历史点
+    
+    if (isSkipping.value) {
+      bufferedReportContent.value += text;
+      return;
+    }
+
+    for(const char of text) {
+      contentQueue.value.push(char);
+    }
+    return;
+  }
   if (event.event === 'error') { reportError.value = event.data?.detail || event.data?.message || '生成 AI 报告失败'; return; }
   if (event.event === 'done') { streamStatus.value = event.data?.message || 'AI 报告生成完成'; }
 };
@@ -267,7 +362,10 @@ const requestReportFallback = async (pigId: string, traceId?: string) => {
   const res = await apiService.generatePigInspectionReport(pigId, traceId);
   if (!isCurrentPig(pigId)) return;
   if (res && res.code === 200) {
-    reportContent.value = res.report || '';
+    const reportText = res.report || '';
+    for(const char of reportText) {
+      contentQueue.value.push(char);
+    }
     reportError.value = '';
     streamStatus.value = 'AI 报告生成完成';
     return;
@@ -279,8 +377,14 @@ const loadReport = async (pigId: string) => {
   isGeneratingReport.value = true;
   streamStatus.value = '正在请求 AI 生长曲线报告...';
   reportContent.value = '';
+  bufferedReportContent.value = '';
   reportError.value = '';
   traceLogs.value = [];
+  displayTraceLogs.value = [];
+  traceQueue.value = [];
+  contentQueue.value = [];
+  
+  startDisplayEngine();
 
   // 初始化思维链追踪
   const traceId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -314,15 +418,7 @@ const loadReport = async (pigId: string) => {
     } else if (event.type === 'heartbeat') return;
 
     if (content || event.type === 'action') {
-      if (event.agent) {
-        traceLogs.value.forEach(log => {
-          if (log.agent && log.agent.toUpperCase() === event.agent.toUpperCase()) {
-            log.status = null;
-          }
-        });
-      }
-
-      traceLogs.value.push({
+      const log = {
         id: logId,
         type: event.type as any,
         agent: event.agent,
@@ -332,13 +428,9 @@ const loadReport = async (pigId: string) => {
         title: title,
         isFolded: true,
         timestamp
-      });
-
-      // 自动滚动思维链面板
-      nextTick(() => {
-        const panel = document.querySelector('.trace-container');
-        if (panel) panel.scrollTop = panel.scrollHeight;
-      });
+      };
+      traceLogs.value.push(log);
+      traceQueue.value.push(log); // 进入待展示队列
     }
   }).then(cleanup => {
     traceCleanup = cleanup;
@@ -346,7 +438,7 @@ const loadReport = async (pigId: string) => {
 
   try {
     await apiService.streamPigInspectionReport(pigId, (event) => handleStreamEvent(pigId, event), traceId);
-    if (isCurrentPig(pigId) && reportError.value && !reportContent.value.trim()) {
+    if (isCurrentPig(pigId) && reportError.value && !contentQueue.value.length) {
       await requestReportFallback(pigId, traceId);
     }
   } catch (error: any) {
@@ -364,7 +456,7 @@ const loadReport = async (pigId: string) => {
         traceCleanup();
         traceCleanup = null;
       }
-    }, 3000);
+    }, 10000); // 延长监听，确保队列中还有未处理完的 trace
   }
 };
 
@@ -462,7 +554,7 @@ const markdownToHtml = (markdown: string) => {
   return html.join('');
 };
 
-const reportHtml = computed(() => markdownToHtml(reportContent.value));
+const reportHtml = computed(() => markdownToHtml(bufferedReportContent.value));
 
 // 图表配置与渲染
 
@@ -493,7 +585,9 @@ const renderGrowthChart = () => {
 
   growthChart.setOption({
     animation: true,
-    animationDuration: 1200,
+    animationDuration: 2500,
+    animationDurationUpdate: 1500,
+    animationEasingUpdate: 'cubicOut',
     grid: { top: 48, right: 24, bottom: 36, left: 52 },
     legend: {
       data: ['历史实测', '预测曲线'],
@@ -654,6 +748,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  if (displayTimeout) clearTimeout(displayTimeout);
   window.removeEventListener('resize', resizeAllCharts);
   growthChart?.dispose();
   gainChart?.dispose();
@@ -700,6 +795,14 @@ onUnmounted(() => {
       >
         <span class="material-symbols-outlined text-[16px] mr-2" :class="{ 'animate-spin': isLoadingPigs }">refresh</span>
         刷新列表
+      </button>
+      <button
+        v-if="selectedPig && isGeneratingReport && !isSkipping"
+        @click="skipAnimation"
+        class="px-4 py-2 text-indigo-600 hover:text-indigo-800 font-bold text-xs uppercase tracking-widest flex items-center transition-all bg-white/50 rounded-xl border border-indigo-100 animate-pulse"
+      >
+        <span class="material-symbols-outlined text-[16px] mr-1">fast_forward</span>
+        加速加载
       </button>
     </div>
 
@@ -867,36 +970,37 @@ onUnmounted(() => {
                 <!-- 情况1：报告已生成（有内容） -->
                 <div v-if="reportHtml" key="report" class="p-6 md:p-8 report-markdown text-sm font-inter leading-relaxed" v-html="reportHtml"></div>
                 
-                <!-- 情况2：正在生成中且有思维链日志 -->
-                <div v-else-if="isGeneratingReport && traceLogs.length" key="traces" class="trace-container p-6 space-y-4">
-                  <div 
-                    v-for="(log, idx) in traceLogs" 
-                    :key="log.id" 
-                    class="relative pl-6 animate-in fade-in slide-in-from-bottom-2 duration-400"
-                  >
-                    <!-- 连线 -->
-                    <div v-if="idx < traceLogs.length - 1" class="absolute left-[9px] top-[24px] bottom-[-16px] w-[1px] bg-emerald-100"></div>
-                    
-                    <!-- 节点图标 -->
-                    <div class="absolute left-0 top-1 w-5 h-5 rounded-lg border border-white shadow-sm flex items-center justify-center z-10"
-                      :class="{
-                        'bg-blue-500 text-white': log.type === 'thought' || log.type === 'connected',
-                        'bg-indigo-500 text-white': log.type === 'action',
-                        'bg-amber-400 text-white': log.type === 'observation',
-                        'bg-emerald-500 text-white': log.type === 'final_answer',
-                        'bg-red-500 text-white': log.type === 'error'
-                      }"
+                <!-- 情况2：正在生成中且有思维链日志展示 -->
+                <div v-else-if="(isGeneratingReport || !isTraceDone || displayTraceLogs.length) && !reportHtml" key="traces" class="trace-container p-6">
+                  <TransitionGroup name="list" tag="div" class="space-y-4">
+                    <div 
+                      v-for="(log, idx) in displayTraceLogs" 
+                      :key="log.id" 
+                      class="relative pl-6"
                     >
-                      <span class="material-symbols-outlined text-[10px] font-bold">
-                        {{ 
-                          log.type === 'thought' ? 'psychology' : 
-                          log.type === 'action' ? 'bolt' : 
-                          log.type === 'observation' ? 'visibility' : 
-                          log.type === 'final_answer' ? 'auto_awesome' :
-                          log.type === 'error' ? 'report' : 'hub'
-                        }}
-                      </span>
-                    </div>
+                      <!-- 连线 -->
+                      <div v-if="idx < displayTraceLogs.length - 1" class="absolute left-[9px] top-[24px] bottom-[-16px] w-[1px] bg-emerald-100"></div>
+                      
+                      <!-- 节点图标 -->
+                      <div class="absolute left-0 top-1 w-5 h-5 rounded-lg border border-white shadow-sm flex items-center justify-center z-10"
+                        :class="{
+                          'bg-blue-500 text-white': log.type === 'thought' || log.type === 'connected',
+                          'bg-indigo-500 text-white': log.type === 'action',
+                          'bg-amber-400 text-white': log.type === 'observation',
+                          'bg-emerald-500 text-white': log.type === 'final_answer',
+                          'bg-red-500 text-white': log.type === 'error'
+                        }"
+                      >
+                        <span class="material-symbols-outlined text-[10px] font-bold">
+                          {{ 
+                            log.type === 'thought' ? 'psychology' : 
+                            log.type === 'action' ? 'bolt' : 
+                            log.type === 'observation' ? 'visibility' : 
+                            log.type === 'final_answer' ? 'auto_awesome' :
+                            log.type === 'error' ? 'report' : 'hub'
+                          }}
+                        </span>
+                      </div>
 
                     <div class="bg-emerald-50/50 rounded-xl p-3 border border-emerald-100/50 hover:bg-white hover:shadow-sm transition-all overflow-hidden group">
                       <div class="flex items-center justify-between mb-1.5">
@@ -918,10 +1022,11 @@ onUnmounted(() => {
                       </div>
                     </div>
                   </div>
+                </TransitionGroup>
                 </div>
 
-                <!-- 情况3：常规加载状态 -->
-                <div v-else-if="isGeneratingReport" key="loading" class="h-full flex flex-col items-center justify-center p-8 space-y-4">
+                <!-- 情况3：常规加载状态（当 Trace 还未显示出来且还在加载时） -->
+                <div v-else-if="isGeneratingReport && !displayTraceLogs.length" key="loading" class="h-full flex flex-col items-center justify-center p-8 space-y-4">
                   <div class="w-12 h-12 border-4 border-emerald-100 border-t-secondary rounded-full animate-spin"></div>
                   <p class="text-[11px] font-bold text-emerald-900/40 uppercase tracking-widest">{{ streamStatus || 'AI 正在分析...' }}</p>
                 </div>
@@ -1081,5 +1186,40 @@ onUnmounted(() => {
   color: #064e3b;
   opacity: 0.8;
   font-size: 0.875rem;
+}
+
+/* Transition Animations */
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-30px) scale(0.9);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.5s ease;
+}
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1fae5;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
 }
 </style>

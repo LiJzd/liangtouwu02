@@ -15,7 +15,7 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -184,13 +184,14 @@ async def generate_inspection_report_stream(request: InspectionRequest):
                         text = event["data"].get("text", "")
                         full_report += text
                         yield _fmt_sse("chunk", {"text": text})
-                    elif event["type"] == "error":
-                        yield _fmt_sse("error", {
-                            "code": 500, "message": "分析失败",
-                            "detail": event["data"].get("message"),
-                            "pig_id": request.pig_id,
+                        await asyncio.sleep(0.05)
+                    elif event["type"] in ["thought", "observation", "connected", "debug_event"]:
+                        # 转发思维链追踪事件
+                        yield _fmt_sse("trace", {
+                            "message": event["data"].get("content") or event["data"].get("output") or event["data"].get("message") or "AI 正在分析...",
+                            "level": "DEBUG" if event["type"] == "thought" else "INFO",
+                            "agent": event.get("agent")
                         })
-                    # 其他中间过程可选转发，保持前端兼容性暂不全部转发
                 except asyncio.TimeoutError:
                     continue
             
@@ -274,30 +275,40 @@ async def generate_farm_briefing():
 
 
 @router.post("/briefing/stream", tags=["Briefing"])
-async def generate_farm_briefing_stream():
+async def generate_farm_briefing_stream(request_data: dict = Body(None)):
     """流式生成全场养殖每日简报（SSE）。"""
-    trace_id = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    trace_id = request_data.get("trace_id") if request_data else f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     async def _gen():
         try:
             from v1.logic.agent_debug_controller import get_or_create_queue, cleanup_queue
             queue = await get_or_create_queue(trace_id)
             
+            # [Optimization] 立即发送连接确认，保障前端 SSE 监听器立即激活
+            yield _fmt_sse("connected", {"trace_id": trace_id, "status": "established"})
+            yield _fmt_sse("status", {"message": "正在路由至简报分析专家..."})
+            
             # 开启异步任务，并传入相同的 trace_id
             task = asyncio.create_task(_run_briefing_via_agent(trace_id=trace_id))
-            
-            yield _fmt_sse("status", {"message": "正在路由至简报分析专家..."})
             
             full_report = ""
             while not task.done() or not queue.empty():
                 try:
-                    # 轮询获取事件
-                    event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    # 获取事件，带较短超时
+                    event = await asyncio.wait_for(queue.get(), timeout=2.0)
                     
                     if event["type"] == "final_answer_chunk":
                         text = event["data"].get("text", "")
                         full_report += text
                         yield _fmt_sse("chunk", {"text": text})
+                        await asyncio.sleep(0.02) # 微调打字机流速
+                    elif event["type"] in ["thought", "observation", "connected", "debug_event"]:
+                        # 转发简报生产过程中的思维链
+                        yield _fmt_sse("trace", {
+                            "message": event["data"].get("content") or event["data"].get("output") or event["data"].get("message") or "AI 思考中...",
+                            "level": "DEBUG" if event["type"] == "thought" else "INFO",
+                            "agent": event.get("agent")
+                        })
                     elif event["type"] == "error":
                         yield _fmt_sse("error", {
                             "code": 500, "message": "简报生成失败", "detail": event["data"].get("message"),

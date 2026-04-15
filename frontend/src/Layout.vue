@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { cn } from './utils';
+import SimulationActionPopup from './components/SimulationActionPopup.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -93,5 +94,8 @@ function handleNavigate(path: string) {
         <span class="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-500 whitespace-nowrap">上报异常项</span>
       </button>
     </div>
+
+    <!-- AI 自动处置弹窗 -->
+    <SimulationActionPopup />
   </div>
 </template>

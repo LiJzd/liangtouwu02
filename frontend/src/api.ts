@@ -591,7 +591,7 @@ export const apiService = {
      * 绕过 Java 后端代理，直接对接 AI 算法服务，实现打字机效果。
      * 注意：此接口生成的简报不会自动入库，入库由 triggerBriefing 负责。
      */
-    streamBriefing: async (onEvent: (event: import('./api').BriefingStreamEvent) => void) => {
+    streamBriefing: async (onEvent: (event: import('./api').BriefingStreamEvent) => void, traceId?: string) => {
         // Mock 流式输出（公共函数）
         const runMockStream = async () => {
             onEvent({ event: 'status', data: { message: '正在激活模拟简报链路...' } });
@@ -619,6 +619,7 @@ export const apiService = {
             const resp = await fetch(`${baseUrl}/inspection/briefing/stream`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trace_id: traceId })
             });
             if (!resp.ok || !resp.body) throw new Error(`简报流连接失败: ${resp.status}`);
 
@@ -627,18 +628,29 @@ export const apiService = {
             let buffer = '';
 
             const parseBlock = (block: string) => {
-                const lines = block.split('\n');
-                let eventName = 'message';
-                const dataParts: string[] = [];
-                for (const line of lines) {
-                    if (line.startsWith('event:')) eventName = line.slice(6).trim();
-                    if (line.startsWith('data:')) dataParts.push(line.slice(5).trim());
+                const parts = block.split('\n');
+                let eventType = 'message';
+                const dataLines: string[] = [];
+
+                for (const part of parts) {
+                    if (part.startsWith('event:')) {
+                        eventType = part.slice(6).trim();
+                    } else if (part.startsWith('data:')) {
+                        dataLines.push(part.slice(5).trim());
+                    }
                 }
-                if (!dataParts.length) return;
-                try {
-                    const data = JSON.parse(dataParts.join('\n'));
-                    onEvent({ event: eventName as any, data });
-                } catch { /* ignore malformed frames */ }
+
+                if (dataLines.length > 0) {
+                    try {
+                        const dataStr = dataLines.join('\n');
+                        const data = JSON.parse(dataStr);
+                        // [Fix] 统一映射：默认消息也视为 chunk
+                        const finalEvent = eventType === 'message' ? 'chunk' : eventType;
+                        onEvent({ event: finalEvent as any, data });
+                    } catch (err) {
+                        console.warn('[streamBriefing] 无法解析 SSE 数据载荷:', err, dataLines);
+                    }
+                }
             };
 
             while (true) {

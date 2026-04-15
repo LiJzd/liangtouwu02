@@ -178,7 +178,10 @@ class AgentSimulationService:
             
             alert_type = self._derive_alert_type(normalized, findings)
             risk = self._derive_risk(normalized, findings)
-            announcement = normalized.get("announcement_text") or self._build_announcement(normalized, alert_type, risk)
+            
+            # 强制加上“模拟告警”前缀，即使 payload 里自带了文字
+            raw_announcement = normalized.get("announcement_text") or self._build_announcement(normalized, alert_type, risk)
+            announcement = raw_announcement if "模拟" in raw_announcement else f"【模拟告警】{raw_announcement}"
             
             force_payload = {
                 "pigId": normalized.get("pig_id") or "SIM-PIG-001",
@@ -203,19 +206,37 @@ class AgentSimulationService:
             except Exception as e:
                 logger.error(f"模拟报警发布失败: {e}")
         
+        print(f">>> [DEBUG] Calling _update_cache with alert_id={published_alert_id}", flush=True)
         self._update_cache(cache_key, fingerprint, worker_name, analysis, published_alert_id)
+        print(">>> [DEBUG] _update_cache finished", flush=True)
 
-        return SimulationIngestResponse(
-            abnormal=True,
-            cacheKey=cache_key,
-            findings=findings,
-            route=worker_name,
-            analysis=analysis,
-            publishedAlert=published_alert,
-            publishedAlertId=published_alert_id,
-            alert=alert_payload,
-            metadata=metadata,
-        )
+        logger.info(f"[Final Response Preparation] route={worker_name}, alert_id={published_alert_id}, abnormal=True")
+        
+        try:
+            resp = SimulationIngestResponse(
+                abnormal=True,
+                cacheKey=cache_key,
+                findings=findings,
+                route=worker_name,
+                analysis=analysis,
+                publishedAlert=published_alert,
+                publishedAlertId=published_alert_id,
+                alert=alert_payload,
+                metadata=metadata,
+            )
+            logger.info("[Final Response] Serialization successful.")
+            return resp
+        except Exception as ser_err:
+            logger.error(f"[Final Response] Serialization failed: {ser_err}", exc_info=True)
+            # 兜底返回，确保至少不让进程因为 Pydantic 校验在 return 时崩掉
+            return SimulationIngestResponse(
+                abnormal=True,
+                cacheKey=cache_key,
+                findings=findings,
+                route=worker_name,
+                publishedAlert=published_alert,
+                publishedAlertId=published_alert_id
+            )
 
 
     def _normalize_event(self, event: SimulatedAlertEvent) -> dict[str, Any]:
@@ -326,14 +347,21 @@ class AgentSimulationService:
         analysis: Optional[str],
         alert_id: Optional[int],
     ) -> None:
-        with _CACHE_LOCK:
-            _CACHE[cache_key] = CacheEntry(
-                fingerprint=fingerprint,
-                seen_at=datetime.now(),
-                route=route,
-                analysis=analysis,
-                alert_id=alert_id,
-            )
+        print(f">>> [DEBUG] _update_cache entry: key={cache_key}", flush=True)
+        try:
+            with _CACHE_LOCK:
+                print(">>> [DEBUG] _update_cache: lock acquired", flush=True)
+                _CACHE[cache_key] = CacheEntry(
+                    fingerprint=fingerprint,
+                    seen_at=datetime.now(),
+                    route=route,
+                    analysis=analysis,
+                    alert_id=alert_id,
+                )
+                print(">>> [DEBUG] _update_cache: entry assigned", flush=True)
+        except Exception as e:
+            print(f">>> [DEBUG] _update_cache ERROR: {e}", flush=True)
+        print(">>> [DEBUG] _update_cache exit", flush=True)
 
     def _build_agent_prompt(self, event: dict[str, Any], findings: list[str]) -> str:
         """
@@ -400,7 +428,7 @@ class AgentSimulationService:
 
     def _build_announcement(self, event: dict[str, Any], alert_type: str, risk: str) -> str:
         return (
-            f"模拟告警，{event.get('area', 'unknown-area')}区域，猪只{event.get('pig_id', 'UNKNOWN')}出现{alert_type}，"
+            f"【模拟告警】{event.get('area', 'unknown-area')}区域，猪只{event.get('pig_id', 'UNKNOWN')}出现{alert_type}，"
             f"风险等级{risk}，请立即关注。"
         )
 
