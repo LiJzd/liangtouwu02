@@ -15,11 +15,19 @@ def verify_camera():
     # 海康标准格式: rtsp://admin:password@ip:554/Streaming/Channels/101
     rtsp_url = f"rtsp://{settings.camera_user}:{settings.camera_password}@{settings.camera_ip}:{settings.camera_rtsp_port}/Streaming/Channels/101"
     
+    # 1. 彻底屏蔽代理干扰
+    for key in ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy']:
+        os.environ.pop(key, None)
+    os.environ['no_proxy'] = '*'
+
+    # 2. 强制使用 TCP 传输模式，提高局域网稳定性
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+
     print(f"[*] 正在尝试连接摄像头...")
     print(f"[*] 目标地址: {settings.camera_ip}")
     print(f"[*] RTSP URL: {rtsp_url.replace(settings.camera_password, '******')}") # 隐藏密码打印
     
-    cap = cv2.VideoCapture(rtsp_url)
+    cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
     
     if not cap.isOpened():
         print("[!] 错误: 无法打开 RTSP 流。请检查：")

@@ -97,7 +97,7 @@ class Settings(BaseSettings):
     dashscope_omni_model: str = "qwen3.5-flash"
     
     # --- 海康摄像头配置 ---
-    camera_ip: str = "192.168.1.64"
+    camera_ip: str = "192.168.1.102"
     camera_user: str = "admin"
     camera_password: str = "jhc20260414"
     camera_rtsp_port: int = 554
