@@ -47,7 +47,7 @@ if DASHSCOPE_API_KEY:
 
 # 选用 2048 维度的高性能向量模型
 EMBEDDING_MODEL = "text-embedding-v3"
-CHROMA_PERSIST_DIR = "./pig_lifecycle_chroma_db"
+CHROMA_PERSIST_DIR = "./pig_lifecycle_chroma_db_v2"
 
 
 # ============================================================
@@ -67,15 +67,29 @@ MOCK_PIG_LIFECYCLE_DATA: list[dict[str, Any]] = [
     },
     {
         "pig_id": "pig_lc_005",
-        "breed": "两头乌", # 重点关注品种
+        "breed": "两头乌", 
         "lifecycle": [
-            {"month": 1, "feed_count": 38, "feed_duration_mins": 230, "weight_kg": 12.5, "status": "生长中"},
-            {"month": 2, "feed_count": 42, "feed_duration_mins": 265, "weight_kg": 24.8, "status": "生长中"},
-            {"month": 3, "feed_count": 46, "feed_duration_mins": 295, "weight_kg": 38.2, "status": "生长中"},
-            {"month": 4, "feed_count": 48, "feed_duration_mins": 310, "weight_kg": 52.6, "status": "生长中"},
-            {"month": 5, "feed_count": 50, "feed_duration_mins": 325, "weight_kg": 66.8, "status": "生长中"},
-            {"month": 6, "feed_count": 48, "feed_duration_mins": 308, "weight_kg": 78.3, "status": "生长中"},
-            {"month": 7, "feed_count": 45, "feed_duration_mins": 285, "weight_kg": 88.0, "status": "出厂"},
+            {"month": 1, "feed_count": 35, "feed_duration_mins": 210, "weight_kg": 10.2, "status": "生长中"},
+            {"month": 2, "feed_count": 40, "feed_duration_mins": 250, "weight_kg": 20.8, "status": "生长中"},
+            {"month": 3, "feed_count": 44, "feed_duration_mins": 275, "weight_kg": 31.5, "status": "生长中"},
+            {"month": 4, "feed_count": 46, "feed_duration_mins": 290, "weight_kg": 43.2, "status": "生长中"},
+            {"month": 5, "feed_count": 47, "feed_duration_mins": 300, "weight_kg": 55.4, "status": "生长中"},
+            {"month": 6, "feed_count": 46, "feed_duration_mins": 305, "weight_kg": 67.2, "status": "高速育肥"},
+            {"month": 7, "feed_count": 45, "feed_duration_mins": 295, "weight_kg": 76.5, "status": "达标出厂"},
+        ],
+    },
+    {
+        "pig_id": "pig_lc_006",
+        "breed": "两头乌", 
+        "lifecycle": [
+            {"month": 1, "feed_count": 32, "feed_duration_mins": 190, "weight_kg": 9.2, "status": "生长中"},
+            {"month": 2, "feed_count": 38, "feed_duration_mins": 230, "weight_kg": 18.5, "status": "生长中"},
+            {"month": 3, "feed_count": 41, "feed_duration_mins": 260, "weight_kg": 28.2, "status": "生长中"},
+            {"month": 4, "feed_count": 44, "feed_duration_mins": 285, "weight_kg": 39.5, "status": "生长中"},
+            {"month": 5, "feed_count": 46, "feed_duration_mins": 310, "weight_kg": 50.8, "status": "生长中"},
+            {"month": 6, "feed_count": 45, "feed_duration_mins": 300, "weight_kg": 62.4, "status": "生长中"},
+            {"month": 7, "feed_count": 43, "feed_duration_mins": 290, "weight_kg": 72.8, "status": "生长中"},
+            {"month": 8, "feed_count": 42, "feed_duration_mins": 280, "weight_kg": 81.5, "status": "稳步成熟"},
         ],
     }
 ]
@@ -204,7 +218,12 @@ def query_pig_growth_prediction(
     results = db.similarity_search_with_score(
         query=query_text,
         k=top_n,
-        filter={"slice_month": current_month}
+        filter={
+            "$and": [
+                {"slice_month": current_month},
+                {"breed": breed}
+            ]
+        }
     )
 
     output_list = []
