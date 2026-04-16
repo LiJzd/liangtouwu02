@@ -26,7 +26,8 @@ async def get_or_create_queue(client_id: str = "default") -> asyncio.Queue:
     """获取或初始化指定客户端的调试消息异步队列。"""
     async with _queue_lock:
         if client_id not in _debug_queues:
-            _debug_queues[client_id] = asyncio.Queue(maxsize=100)
+            # [Fix] 增加队列容量，防止长报告流式输出时早期片段被覆盖丢弃
+            _debug_queues[client_id] = asyncio.Queue(maxsize=1000)
         return _debug_queues[client_id]
 
 

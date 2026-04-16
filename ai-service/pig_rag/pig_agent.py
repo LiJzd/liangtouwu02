@@ -335,6 +335,7 @@ def build_dual_track_report(
     breed: str,
     current_day_age: int,
     current_weight: float,
+    current_weight_series: list[float],
     predicted_curve: list[dict],
     deviation_summary: str,
     deviation_percent: float,
@@ -406,6 +407,23 @@ def build_dual_track_report(
     lines.append(f"- **偏离度**：`{deviation_percent:+.2f}%` {deviation_icon}")
     lines.append(f"- **偏离等级**：{deviation_level}")
     lines.append(f"- **建议**：{deviation_advice}")
+    lines.append("")
+
+    # 1.5 历史实测数据表格 (用于前端图表解析)
+    lines.append("### 📋 历史实测数据 (Historical)")
+    lines.append("")
+    lines.append("| 月份 | 实测体重 (kg) | 状态 |")
+    lines.append("|---|---:|---|")
+    
+    # 从 current_weight_series 采样，每 30 天取一个点作为月度数据
+    # 假设 series 是按天记录的
+    for i, weight in enumerate(current_weight_series):
+        day = i + 1
+        if day % 30 == 0 or day == len(current_weight_series):
+            month = day // 30 if day % 30 == 0 else (day // 30 + 1)
+            # 如果是最后一天且不是整月，标记为“当前”
+            status = "当前实测" if day == len(current_weight_series) else "历史记录"
+            lines.append(f"| {month} | {weight:.1f} | {status} |")
     lines.append("")
 
     # 2. 数值轨产物：成长曲线数据表格
@@ -631,6 +649,7 @@ def run_dual_track_inspection(
         breed=breed,
         current_day_age=current_day_age,
         current_weight=current_weight,
+        current_weight_series=current_weight_series,
         predicted_curve=prediction.predicted_curve,
         deviation_summary=prediction.deviation_summary,
         deviation_percent=prediction.deviation_percent,
