@@ -79,8 +79,8 @@ class AgentSimulationService:
             )
 
         fingerprint = self._build_fingerprint(normalized, findings)
-        # 如果是强制模式，大幅缩短去重窗口（5秒），方便用户快速重复测试演示效果
-        window = 5 if event.force_mode else thresholds.duplicate_window_seconds
+        # 如果是强制模式，大幅缩短去重窗口（3秒），方便用户快速重复测试演示效果
+        window = 3 if event.force_mode else thresholds.duplicate_window_seconds
         duplicate_entry = self._get_duplicate(cache_key, fingerprint, window)
         if duplicate_entry is not None:
             return SimulationIngestResponse(
@@ -355,10 +355,13 @@ class AgentSimulationService:
         analysis: Optional[str],
         alert_id: Optional[int],
     ) -> None:
-        print(f">>> [DEBUG] _update_cache entry: key={cache_key}", flush=True)
+        """
+        线程安全地更新事件缓存。
+        增加超时或异常捕获，确保 AI 服务主流程不会因缓存锁死而崩溃。
+        """
         try:
+            # 使用阻塞锁，确保写入一致性
             with _CACHE_LOCK:
-                print(">>> [DEBUG] _update_cache: lock acquired", flush=True)
                 _CACHE[cache_key] = CacheEntry(
                     fingerprint=fingerprint,
                     seen_at=datetime.now(),
@@ -366,10 +369,9 @@ class AgentSimulationService:
                     analysis=analysis,
                     alert_id=alert_id,
                 )
-                print(">>> [DEBUG] _update_cache: entry assigned", flush=True)
+                logger.debug(f"Cache updated for {cache_key}: alert_id={alert_id}")
         except Exception as e:
-            print(f">>> [DEBUG] _update_cache ERROR: {e}", flush=True)
-        print(">>> [DEBUG] _update_cache exit", flush=True)
+            logger.error(f"Failed to update simulation cache: {e}")
 
     def _build_agent_prompt(self, event: dict[str, Any], findings: list[str]) -> str:
         """

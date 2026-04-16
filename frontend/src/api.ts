@@ -95,12 +95,20 @@ export const MOCK_ALERTS: Alert[] = [
 export const MOCK_PIGS_LIST = Array.from({ length: 100 }, (_, i) => {
     const idNum = i + 1;
     const padId = idNum.toString().padStart(3, '0');
+    // 月龄分布：2-9个月
+    const current_month = 2 + (i % 8);
+    // [Fix] 体重逻辑修正：让体重与月龄挂钩，遵守生长常识
+    // 两头乌参考：2月龄≈18kg, 5月龄≈45kg, 9月龄≈90kg
+    const baseWeight = current_month * 9.2 + 2; 
+    const randomJitter = (Math.random() * 8) - 4; // +/- 4kg 差异
+    const current_weight_kg = Math.round(Math.max(baseWeight + randomJitter, 12) * 10) / 10;
+
     return {
         pigId: `PIG${padId}`,
         breed: '两头乌',
         area: `${['一号舍', '二号舍', '三号舍', '四号舍', '五号舍', '六号舍', '七号舍', '八号舍', '隔离区'][i % 9]}-${['A', 'B', 'C', 'D'][i % 4]}区`,
-        current_weight_kg: Math.round((30.0 + Math.random() * 70) * 10) / 10,
-        current_month: 2 + (i % 8)
+        current_weight_kg,
+        current_month
     };
 });
 
@@ -234,15 +242,24 @@ const buildMockLifecycle = (pigId: string) => {
     // 用固定种子生成稳定的模拟数据
     const seed = pigId.charCodeAt(pigId.length - 1);
 
-    // 计算一个接近 currentWeight 但略低的增重率，确保交汇处有约 4.5kg 的差距（符合用户 4-5kg 的要求）
-    const targetLastWeight = currentWeight - 4.5;
-    const totalGainNeeded = targetLastWeight - 15;
-    const adjustedGain = currentMonth > 1 ? totalGainNeeded / (currentMonth - 1) : 9.0;
+    // [Fix] 核心对齐逻辑：确保第 currentMonth 月的体重精确为 currentWeight
+    // 出生体重约为 14-16kg，计算平均增重斜率
+    const startWeight = 15.0 + (seed % 2);
+    const totalGain = currentWeight - startWeight;
+    const avgMonthlyGain = currentMonth > 1 ? totalGain / (currentMonth - 1) : 0;
 
     return Array.from({ length: currentMonth }, (_, i) => {
         const month = i + 1;
-        // 体重从出生约15kg开始，使用动态计算的增重率
-        const weight = Math.round((15 + i * adjustedGain + (seed % 3)) * 10) / 10;
+        // 计算当前月体重，倒数第一个点强制等于 currentWeight
+        let weight = 0;
+        if (month === currentMonth) {
+            weight = currentWeight;
+        } else {
+            // 中间点增加一点生物学波动 (-0.5kg ~ +0.5kg)
+            const jitter = ((seed + month) % 11 - 5) / 10;
+            weight = Math.round((startWeight + i * avgMonthlyGain + jitter) * 10) / 10;
+        }
+
         return {
             month,
             weight_kg: weight,

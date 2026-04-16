@@ -39,6 +39,7 @@ const streamStatus = ref('');
 const reportContent = ref(''); // 原始后端接收汇总
 const bufferedReportContent = ref(''); // 前端逐渐刷出的内容
 const reportError = ref('');
+const isChartPending = ref(false); // [New] 用于控制报告打字完到图表渲染出来的 Loading 状态
 
 // [Speed Optimization] 直接接收数值轨道数据，不依赖报告文本解析
 const directHistoricalPoints = ref<HistoricalPoint[]>([]);
@@ -312,8 +313,8 @@ const startDisplayEngine = () => {
           if (panel) panel.scrollTop = panel.scrollHeight;
         });
       }
-      // 关键停顿：思维节点强制停留 0.8s - 1.5s
-      const delay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 700) + 800);
+      // 科技感节点停顿：优化演示节奏 (300ms - 500ms)
+      const delay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 200) + 300);
       displayTimeout = setTimeout(processNext, delay);
       return;
     }
@@ -331,12 +332,18 @@ const startDisplayEngine = () => {
           const chunk = contentQueue.value.shift() || '';
           bufferedReportContent.value += chunk;
           
-          // 打字机速度：50ms - 80ms
-          const charDelay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 30) + 50);
+          // 打字机速度：显著提升演示流畅度 (15-25ms)
+          const charDelay = nextDelay !== null ? nextDelay : (Math.floor(Math.random() * 10) + 15);
           displayTimeout = setTimeout(processNext, charDelay);
        } else if (!isGeneratingReport.value) {
-          // 全部完成
+          // 全部完成：此时报告文本已全部展示完毕，执行图表一次性渲染
           displayTimeout = null;
+          isChartPending.value = true;
+          nextTick(() => {
+            renderActiveChart();
+            // 延迟一点点关闭 Loading，确保 ECharts 动画开始
+            setTimeout(() => { isChartPending.value = false; }, 400);
+          });
        } else {
           // 等待后端产生新内容
           displayTimeout = setTimeout(processNext, 100);
@@ -732,8 +739,12 @@ const resizeAllCharts = () => {
 };
 
 watch([historicalPoints, curvePoints], async () => {
-  await nextTick();
-  renderActiveChart();
+  // [Fix] 不再在数据变化时立即渲染，由 displayEngine 在报告打字完成后统一触发初次渲染
+  // 但如果用户手动切换了 Tab，或者报告已经生成完毕后数据有微调，仍需保持响应
+  if (!isGeneratingReport.value && contentQueue.value.length === 0) {
+    await nextTick();
+    renderActiveChart();
+  }
 }, { deep: true });
 
 watch(activeTab, async () => {
@@ -921,13 +932,13 @@ onUnmounted(() => {
 
             <!-- 图表容器 -->
             <div class="bg-white/95 border border-emerald-200 rounded-[2rem] p-6 shadow-sm flex-1 min-h-[380px] relative backdrop-blur-md">
-              <!-- 加载中遮罩 -->
+              <!-- 加载中遮罩：全周期覆盖 -->
               <div
-                v-if="isGeneratingReport && !curvePoints.length && !historicalPoints.length && !curveError"
+                v-if="(isGeneratingReport || isChartPending) && (!curvePoints.length && !historicalPoints.length) && !curveError"
                 class="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm rounded-[2rem] flex flex-col items-center justify-center"
               >
                 <div class="w-12 h-12 mb-4 border-4 border-emerald-200 border-t-secondary rounded-full animate-spin shadow-lg"></div>
-                <p class="text-[11px] font-bold font-inter tracking-[0.2em] text-emerald-900 uppercase">AI 正在绘制图谱流...</p>
+                <p class="text-[11px] font-bold font-inter tracking-[0.2em] text-emerald-900 uppercase">AI 正在精准绘制推演轨道...</p>
               </div>
 
               <!-- 错误状态 -->

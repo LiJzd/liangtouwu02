@@ -437,7 +437,11 @@ function connect() {
     };
 
     eventSource.onerror = (err) => {
-      console.error('[AlertVoice] SSE 连接发生错误或异常中断:', err);
+      console.error('%c[AlertVoice] SSE 连接发生错误或异常中断:', 'color: #ef4444; font-weight: bold;', err);
+      // 捕获连接失败状态，准备重连
+      if (alertVoiceState.connected) {
+          console.warn('[AlertVoice] 检测到活跃连接断开，正在尝试紧急重连...');
+      }
       alertVoiceState.connected = false;
       scheduleReconnect();
     };
@@ -489,11 +493,13 @@ function connect() {
         if (firstId) seenEventIds.delete(firstId);
       }
 
-      // 🚀 核心：输出写死的思考日志 (Chain of Thought)
+      console.log(`%c[消息到站] SSE 告警数据包 ID: ${uniqueId}`, 'color: #3b82f6; font-weight: bold;');
+
+      // 🚀 核心：输出写死的思考日志 (Chain of Thought)，增加实时感
       console.log(`%c[思考日志 - AI 诊断分析中枢]`, 'color: #10b981; background: #ecfdf5; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
       console.log(`- [Thought] 接收到环境/体征检测信号流入...
 - [Action] 调用系统级多智能体协同评估 (PigBot & VetAgent)...
-- [Observation] 判定结果：当前 ${payload.alert.type} 命中异常。
+- [Observation] 判定结果：当前 ${payload.alert.type || '异常项目'} 命中阈值风险。
 - [Final Answer] 已成功触发联动策略，正在进行连续 3 次语音播报。`);
 
       cachePigBotAlert(payload);

@@ -33,9 +33,7 @@ const loadHistory = async () => {
   try {
     const res = await apiService.getBriefingHistory(15);
     history.value = res;
-    if (res.length > 0 && !selectedBriefing.value) {
-      selectedBriefing.value = res[0];
-    }
+    // Removed automatic selection of res[0] to maintain placeholder state on initial load
   } catch (e) {
     console.error('加载简报历史失败', e);
   } finally {
