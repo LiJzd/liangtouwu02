@@ -195,7 +195,7 @@ function initMultiGasChart(el: HTMLElement) {
         <!-- Video System -->
         <div class="lg:col-span-2 bg-white rounded-xl border border-emerald-200 overflow-hidden shadow-sm group h-[360px]">
           <div class="relative h-full w-full">
-            <video autoplay loop muted playsinline class="w-full h-full object-cover grayscale brightness-90 group-hover:brightness-100 transition-all duration-700" src="/nursery_sw_15.mp4"></video>
+            <video autoplay loop muted playsinline class="w-full h-full object-cover grayscale brightness-90 group-hover:brightness-100 transition-all duration-700" src="https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=smart%20pig%20farm%20monitoring%20video%20surveillance&image_size=landscape_16_9"></video>
             <div class="absolute inset-0 bg-emerald-900/15 mix-blend-multiply pointer-events-none"></div>
             <div class="absolute inset-0 p-6 flex flex-col justify-between">
               <div class="flex justify-between items-start">

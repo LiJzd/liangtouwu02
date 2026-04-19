@@ -21,7 +21,7 @@ def verify_camera():
     os.environ['no_proxy'] = '*'
 
     # 2. 强制使用 TCP 传输模式，提高局域网稳定性
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp;stimeout;5000000"
 
     print(f"[*] 正在尝试连接摄像头...")
     print(f"[*] 目标地址: {settings.camera_ip}")
