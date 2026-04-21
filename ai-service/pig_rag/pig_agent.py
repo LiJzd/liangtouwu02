@@ -22,10 +22,13 @@ except ImportError:
 
 # 阿里通义千问的接口配置。API KEY 建议存在系统环境变量里，要是没设，就先用这个默认的。
 # 模型选 qwen3.5-flash，因为它推理速度快，且具备多模态能力。
-DASHSCOPE_API_KEY = os.environ.get(
-    "DASHSCOPE_API_KEY",
-    "sk-564244e28e5d4c35bf9fa9c9565f0efb"
-)
+DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
+if not DASHSCOPE_API_KEY:
+    try:
+        from v1.common.config import get_settings
+        DASHSCOPE_API_KEY = get_settings().dashscope_api_key
+    except ImportError:
+        pass
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 LLM_MODEL = "qwen3.5-flash"
 

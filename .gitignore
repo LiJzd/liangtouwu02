@@ -311,6 +311,7 @@ temp/
 # Python cache
 pip-cache/
 pip-tmp/
+pytest-cache-files-*/
 
 # Empty directories
 -p/
