@@ -22,7 +22,7 @@ public class PigJsonTest {
         pigClass.getMethod("setIssue", String.class).invoke(pig, "健康");
         pigClass.getMethod("setBodyTemp", BigDecimal.class).invoke(pig, new BigDecimal("38.5"));
         pigClass.getMethod("setActivityLevel", Integer.class).invoke(pig, 80);
-        pigClass.getMethod("setBreed", String.class).invoke(pig, "金华两头乌");
+        pigClass.getMethod("setBreed", String.class).invoke(pig, "两头乌");
         pigClass.getMethod("setArea", String.class).invoke(pig, "猪舍A");
         pigClass.getMethod("setCurrentWeightKg", BigDecimal.class).invoke(pig, new BigDecimal("45.5"));
         pigClass.getMethod("setCurrentMonth", Integer.class).invoke(pig, 4);

@@ -48,6 +48,23 @@ public class AlertServiceImpl implements AlertService {
     }
 
     @Override
+    public void deleteAlert(Long id) {
+        alertMapper.deleteAlertById(id);
+    }
+
+    @Override
+    public void deleteAlerts(List<Long> ids) {
+        if (ids != null && !ids.isEmpty()) {
+            alertMapper.deleteAlertsByIds(ids);
+        }
+    }
+
+    @Override
+    public void clearAllAlerts() {
+        alertMapper.deleteAll();
+    }
+
+    @Override
     public SseEmitter subscribe() {
         return alertRealtimeService.subscribe();
     }

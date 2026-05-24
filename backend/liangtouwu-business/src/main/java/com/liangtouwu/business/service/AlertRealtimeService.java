@@ -2,6 +2,7 @@ package com.liangtouwu.business.service;
 
 import com.liangtouwu.business.dto.AlertBroadcastEvent;
 import com.liangtouwu.domain.entity.Alert;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -12,27 +13,33 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+@Slf4j
 @Service
 public class AlertRealtimeService {
 
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
 
     public SseEmitter subscribe() {
-        // 设置超时时间为5分钟（300秒），心跳间隔为25秒，足够保持连接
+        // 设置超时时间为5分钟（300秒），防止频繁断连
         SseEmitter emitter = new SseEmitter(300_000L);
         emitters.add(emitter);
+        log.info("New SSE subscription established. Active emitters: {}", emitters.size());
 
-        emitter.onCompletion(() -> emitters.remove(emitter));
+        emitter.onCompletion(() -> {
+            emitters.remove(emitter);
+            log.info("SSE subscription completed. Active emitters: {}", emitters.size());
+        });
         emitter.onTimeout(() -> {
             emitters.remove(emitter);
+            log.info("SSE subscription timeout. Active emitters: {}", emitters.size());
             emitter.complete();
         });
         emitter.onError(error -> {
             emitters.remove(emitter);
+            log.error("SSE subscription error: {}. Active emitters: {}", error != null ? error.getMessage() : "unknown", emitters.size());
             try {
                 emitter.complete();
             } catch (Exception ignored) {
-                // 忽略完成时的异常
             }
         });
 
@@ -49,6 +56,7 @@ public class AlertRealtimeService {
     }
 
     public void publish(Alert alert, String spokenText) {
+        log.info("Broadcasting alert to {} emitters: {}", emitters.size(), spokenText);
         AlertBroadcastEvent event = AlertBroadcastEvent.builder()
                 .eventId(buildEventId(alert))
                 .spokenText(spokenText)

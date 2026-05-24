@@ -20,5 +20,15 @@ public class AlertSimulationRequest {
     private String description;
     private String risk;
     private String announcementText;
+    private Boolean forceMode = true;
+
     private Map<String, Object> thresholds;
+
+    public Boolean getForceMode() {
+        return forceMode;
+    }
+
+    public void setForceMode(Boolean forceMode) {
+        this.forceMode = forceMode;
+    }
 }

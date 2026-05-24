@@ -9,12 +9,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 /**
- * 猪只档案响应（AI Tool 专用）
- * 
- * 扁平化设计：
- * - 基础信息在第一层
- * - 生长周期数据在第二层（数组）
- * - 避免深层嵌套
+ * 猪只档案响应 (用于 AI 推理分析)
  */
 @Data
 @Builder
@@ -22,7 +17,7 @@ import java.util.List;
 @AllArgsConstructor
 public class PigInfoResponse {
 
-    // ========== 基础信息 ==========
+    // 基础信息
     private String id;
     private String breed;
     private BigDecimal currentWeight;
@@ -33,11 +28,11 @@ public class PigInfoResponse {
     private BigDecimal bodyTemp;
     private Integer activityLevel;
 
-    // ========== 生长周期数据 ==========
+    // 生长周期历史
     private List<LifecyclePoint> lifecycle;
 
     /**
-     * 生长周期数据点（扁平化）
+     * 周期数据采样点
      */
     @Data
     @Builder

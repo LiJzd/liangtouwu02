@@ -10,7 +10,9 @@ import com.liangtouwu.common.vo.ApiResponse;
 import com.liangtouwu.domain.entity.Alert;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -57,8 +59,41 @@ public class AlertController {
         return ApiResponse.success(alertService.createAndBroadcastAlert(request));
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> deleteAlert(@PathVariable Long id) {
+        alertService.deleteAlert(id);
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping("/batch")
+    public ApiResponse<Void> deleteAlerts(@RequestBody List<Long> ids) {
+        alertService.deleteAlerts(ids);
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping("/all")
+    public ApiResponse<Void> clearAllAlerts() {
+        alertService.clearAllAlerts();
+        return ApiResponse.success(null);
+    }
+
     @PostMapping("/simulate")
     public ApiResponse<Map<String, Object>> simulateAlert(@RequestBody AlertSimulationRequest request) {
+        return ApiResponse.success(alertSimulationService.forwardSimulation(request));
+    }
+
+    @GetMapping("/simulate/mock")
+    public ApiResponse<Map<String, Object>> simulateMock(
+            @RequestParam(defaultValue = "SIM-PIG-001") String pigId,
+            @RequestParam(defaultValue = "一号猪舍") String area,
+            @RequestParam(defaultValue = "模拟环境异常") String type
+    ) {
+        AlertSimulationRequest request = new AlertSimulationRequest();
+        request.setPigId(pigId);
+        request.setArea(area);
+        request.setType(type);
+        request.setForceMode(true);
+        request.setDescription("便捷调试接口触发。此请求将绕过 AI 深度研判，通过 Python Service 直接发布告警到 SSE 链路，用于验证前端弹窗及联动逻辑。");
         return ApiResponse.success(alertSimulationService.forwardSimulation(request));
     }
 

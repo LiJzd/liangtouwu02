@@ -13,16 +13,32 @@
             <if test="area != null and area != ''">
                 AND area = #{area}
             </if>
+            AND (message NOT LIKE '模拟告警%' OR message IS NULL)
         </where>
         ORDER BY id DESC
     </select>
 
     <select id="countTodayAlerts" resultType="java.lang.Integer">
-        SELECT COUNT(*) FROM alert
+        SELECT COUNT(*) FROM alert WHERE (message NOT LIKE '模拟告警%' OR message IS NULL)
     </select>
 
     <insert id="insertAlert" parameterType="com.liangtouwu.domain.entity.Alert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO alert (pig_id, area, type, risk, timestamp, message)
         VALUES (#{pigId}, #{area}, #{type}, #{risk}, #{timestamp}, #{message})
     </insert>
+
+    <delete id="deleteAlertById">
+        DELETE FROM alert WHERE id = #{id}
+    </delete>
+    
+    <delete id="deleteAlertsByIds">
+        DELETE FROM alert WHERE id IN
+        <foreach item="item" collection="ids" open="(" separator="," close=")">
+            #{item}
+        </foreach>
+    </delete>
+
+    <delete id="deleteAll">
+        DELETE FROM alert
+    </delete>
 </mapper>

@@ -34,6 +34,9 @@ from v1.common.db import init_db
 from v1.logic.bot_scheduler import scheduler_loop
 
 # --- 日志配置 ---
+import os
+os.makedirs("./logs", exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -66,6 +69,16 @@ async def lifespan(app: FastAPI):
     # 待优化：模型单例加载逻辑
     
     await init_db()
+    
+    # 启动时自动检测/热重构两头乌 RAG 向量数据库
+    try:
+        from pig_rag.liangtouwu_knowledge_rag import init_liangtouwu_knowledge_db
+        logger.info("正在系统 lifespan 阶段自动检测/构建两头乌 RAG 向量数据库...")
+        await asyncio.to_thread(init_liangtouwu_knowledge_db, False)
+        logger.info("两头乌 RAG 向量数据库初始化完毕。")
+    except Exception as e:
+        logger.error(f"lifespan 阶段初始化两头乌 RAG 向量数据库发生异常: {e}", exc_info=True)
+
     app.state.bot_stop_event = asyncio.Event()
     app.state.bot_task = asyncio.create_task(scheduler_loop(app.state.bot_stop_event))
     
@@ -289,6 +302,18 @@ try:
     logger.info("IOT Control 模块路由挂载成功。")
 except ImportError as e:
     logger.warning(f"Failed to load IOT Control module: {e}")
+
+# 两头乌 RAG 向量检索模块
+try:
+    from v1.logic.liangtouwu_rag_controller import router as liangtouwu_rag_router
+    app.include_router(
+        liangtouwu_rag_router,
+        prefix="/api/v1/rag/liangtouwu",
+        tags=["Liangtouwu RAG"]
+    )
+    logger.info("Liangtouwu RAG 模块路由挂载成功。")
+except ImportError as e:
+    logger.warning(f"Failed to load Liangtouwu RAG module: {e}")
 
 # [静态文件服务 - 调试网页]
 try:

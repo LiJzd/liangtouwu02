@@ -77,6 +77,12 @@ class Settings(BaseSettings):
     mysql_password: str = "your_password"
     mysql_database: str = "pig_farm"
 
+    # --- Kafka 配置 ---
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_group_id: str = "pig-farm-ai-python-group"
+    kafka_tasks_topic: str = "pig-farm-tasks"
+    kafka_results_topic: str = "pig-farm-results"
+
 
     # --- QQ Bot 配置 ---
     bot_app_id: str = ""

@@ -9,5 +9,8 @@ import java.util.List;
 public interface AlertService {
     List<Alert> getAlerts(String search, String risk, String area);
     Alert createAndBroadcastAlert(AlertBroadcastRequest request);
+    void deleteAlert(Long id);
+    void deleteAlerts(List<Long> ids);
+    void clearAllAlerts();
     SseEmitter subscribe();
 }

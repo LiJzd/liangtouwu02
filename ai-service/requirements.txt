@@ -49,13 +49,17 @@ qq-botpy==1.1.0
 # 阿里云 DashScope SDK
 dashscope==1.25.9
 
-# 向量数据库及配套 LangChain 增强包
-chromadb==0.6.3
-langchain-chroma==1.1.0
+# 核心重构与检索依赖
+langgraph==0.2.60
+pymilvus==2.5.4
+aiokafka==0.12.0
+rank-bm25==0.2.2
+sqlparse==0.5.3
+langchain-chroma>=0.1.0
 
 # 测试工具
 pytest>=8.0.0
 hypothesis>=6.0.0
 
-# ����ͨ�� (ESP32 �м̿���)
+# 串口通信 (ESP32 硬件控制)
 pyserial==3.5

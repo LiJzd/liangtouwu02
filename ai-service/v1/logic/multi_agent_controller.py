@@ -155,38 +155,98 @@ async def chat_v2(request: Request) -> AgentChatResponse:
     )
     
     try:
-        # 调用协调器执行任务
-        orchestrator = get_orchestrator()
-        result = await orchestrator.execute(context)
+        from v1.agents.base_graph import execute_agent_graph
+        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+
+        # 将历史消息转换为 LangChain Message 实例
+        langchain_messages = []
+        for m in messages_list[:-1] if messages_list else []:
+            role = m.get("role")
+            content = m.get("content", "")
+            # 处理 content 可能是 list 的情况
+            if isinstance(content, list):
+                text_parts = [
+                    item.get("text", "") 
+                    for item in content 
+                    if isinstance(item, dict) and item.get("type") == "text"
+                ]
+                content_str = " ".join(text_parts) if text_parts else ""
+            else:
+                content_str = content or ""
+                
+            if role in ("user", "human"):
+                langchain_messages.append(HumanMessage(content=content_str))
+            elif role in ("assistant", "ai"):
+                langchain_messages.append(AIMessage(content=content_str))
+            elif role == "system":
+                langchain_messages.append(SystemMessage(content=content_str))
         
-        # 记录执行状态及调试信息
-        if result is None:
-            logger.error("Orchestrator.execute returned None, creating fallback result")
-            result = AgentResult(
-                success=False,
-                answer="系统繁忙，诊断流程执行异常，请稍后再试。",
-                worker_name="orchestrator",
-                error="Result is None"
-            )
+        # 追加最新的 HumanMessage
+        langchain_messages.append(HumanMessage(content=user_input_text))
+
+        # 组装 AgentState 初始状态
+        is_ammonia = bool(
+            metadata.get("is_ammonia_demo") or 
+            metadata.get("scene") == "ammonia" or 
+            metadata.get("ammonia")
+        )
+        is_simulation = bool(
+            metadata.get("is_simulation_demo") or 
+            metadata.get("scene") == "simulation" or 
+            metadata.get("simulation")
+        )
+
+        init_state = {
+            "messages": langchain_messages,
+            "current_agent": None,
+            "schema_metadata": {},
+            "query_context": {
+                "image_urls": image_urls,
+                "audio_path": audio_path
+            },
+            "errors": [],
+            "client_id": trace_id,
+            "user_id": user_id,
+            "is_ammonia_demo": is_ammonia,
+            "is_simulation_demo": is_simulation,
+            "metadata": metadata,
+            "final_answer": "",
+            "image_base64": "",
+            "image_key": ""
+        }
+
+        logger.info(f"--- [MultiAgentController] 启动 LangGraph 状态图引擎，输入意图: {user_input_text} ---")
+        res_state = await execute_agent_graph(init_state)
+
+        # 整理返回结果
+        reply = res_state.get("final_answer") or "系统繁忙，诊断流程执行异常，请稍后再试。"
+        image_base64 = res_state.get("image_base64")
         
-        if result.thoughts:
-            logger.debug(f"Worker {result.worker_name} internal thought: {result.thoughts}")
-        
-        if result.error:
-            logger.error(f"Worker {result.worker_name} execution failed: {result.error}")
-        
-        if result.image:
-            logger.info(f"Returning image to frontend, content length: {len(result.image)}")
+        # 封装 metadata
+        res_metadata = {
+            "current_agent": res_state.get("current_agent"),
+            "image_key": res_state.get("image_key"),
+            **res_state.get("metadata", {})
+        }
+
+        # 兼容一些日志输出
+        logger.info(f"--- [MultiAgentController] LangGraph 执行完毕，路由智能体: {res_state.get('current_agent')} ---")
+        if image_base64:
+            logger.info(f"Returning image to frontend, content length: {len(image_base64)}")
         else:
-            # 只有在携带图片/音频输入，或路由到 HardwareAgent 时，才预期返回图片
-            # 其余常规文本对话不返回图片是正常行为，降级为 DEBUG 避免日志噪声
             has_visual_input = bool(image_urls or audio_path)
-            is_hardware_route = result.worker_name == "HardwareAgent"
+            is_hardware_route = res_state.get("current_agent") == "hardware"
             if has_visual_input or is_hardware_route:
                 logger.warning("No image returned to frontend (expected for visual/hardware request)")
             else:
                 logger.debug("No image in response (normal for text-only requests)")
-    
+
+    except Exception as e:
+        logger.exception(f"LangGraph execution exception: {e}")
+        reply = f"系统执行异常: {str(e)}"
+        image_base64 = ""
+        res_metadata = {"error": str(e)}
+        
     finally:
         # 清理临时音频文件
         if audio_path and os.path.exists(audio_path):
@@ -206,9 +266,9 @@ async def chat_v2(request: Request) -> AgentChatResponse:
                     logger.error(f"Failed to delete temp image {path}: {e}")
 
     return AgentChatResponse(
-        reply=result.answer,
-        image=result.image,
-        metadata=result.metadata
+        reply=reply,
+        image=image_base64,
+        metadata=res_metadata
     )
 
 
