@@ -8,9 +8,6 @@ import java.math.BigDecimal;
 
 /**
  * 主控台统计数据 DTO (Data Transfer Object)
- * <p>
- * 用于传输主控台首页所需的核心指标数据。
- * </p>
  */
 @Data
 @Builder
@@ -22,35 +19,14 @@ public class DashboardStats {
     private Integer activityLevel;
     private Integer alertCount;
 
-    // 手动添加构造器以确保编译稳定性
-    public static DashboardStatsBuilder builder() {
-        return new DashboardStatsBuilder();
-    }
-
-    public static class DashboardStatsBuilder {
-        private BigDecimal averageTemp;
-        private Integer activityLevel;
-        private Integer alertCount;
-
-        DashboardStatsBuilder() {}
-
-        public DashboardStatsBuilder averageTemp(BigDecimal averageTemp) {
-            this.averageTemp = averageTemp;
-            return this;
-        }
-
-        public DashboardStatsBuilder activityLevel(Integer activityLevel) {
-            this.activityLevel = activityLevel;
-            return this;
-        }
-
-        public DashboardStatsBuilder alertCount(Integer alertCount) {
-            this.alertCount = alertCount;
-            return this;
-        }
-
-        public DashboardStats build() {
-            return new DashboardStats(averageTemp, activityLevel, alertCount);
-        }
-    }
+    // 扩充字段以对接前端的各种展示卡片
+    private Integer count;               // 全场实时总头数
+    private String countChange;         // 周头数变化量
+    private String efficiency;          // 核心繁育效率
+    private String mortality;           // 当日死亡率
+    private String avgWeight;           // 场均体重
+    private String feedRatio;           // 全周料肉比
+    private String dailyFeed;           // 场均日供料总量
+    private String dailyWater;          // 每日饮水总量
+    private String deviceOnline;        // 核心设备在线率
 }

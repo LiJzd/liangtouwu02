@@ -1,5 +1,7 @@
-<script setup lang="ts">import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import * as echarts from 'echarts';
+import { apiService } from '../api';
 
 const stats = ref({
     count: '14,502',
@@ -15,32 +17,83 @@ const stats = ref({
 
 const gasChartRef = ref<HTMLElement | null>(null);
 let charts: echarts.ECharts[] = [];
+let timer: any = null;
+
+const loadStats = async () => {
+    try {
+        const res = await apiService.getDashboardStats();
+        if (res && res.code === 200 && res.data) {
+            const d = res.data;
+            stats.value.count = d.count != null ? d.count.toLocaleString() : stats.value.count;
+            stats.value.countChange = d.countChange || stats.value.countChange;
+            stats.value.efficiency = d.efficiency || stats.value.efficiency;
+            stats.value.mortality = d.mortality || stats.value.mortality;
+            stats.value.avgWeight = d.avgWeight || stats.value.avgWeight;
+            stats.value.feedRatio = d.feedRatio || stats.value.feedRatio;
+            stats.value.dailyFeed = d.dailyFeed || stats.value.dailyFeed;
+            stats.value.dailyWater = d.dailyWater || stats.value.dailyWater;
+            stats.value.deviceOnline = d.deviceOnline || stats.value.deviceOnline;
+        }
+    } catch (e) {
+        console.error("加载大屏统计指标失败:", e);
+    }
+};
+
+const loadTrends = async () => {
+    try {
+        const res = await apiService.getEnvironmentTrends();
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+            const trends = res.data;
+            const times = trends.map(t => t.time);
+            const nh3s = trends.map(t => t.nh3 != null ? parseFloat(t.nh3) : 4.2);
+            const co2s = trends.map(t => t.co2 != null ? parseFloat(t.co2) : 410.0);
+            
+            if (gasChartRef.value) {
+                initMultiGasChart(gasChartRef.value, times, nh3s, co2s);
+            }
+        }
+    } catch (e) {
+        console.error("加载大屏环境走势曲线失败:", e);
+    }
+};
 
 onMounted(async () => {
     await nextTick();
-    if (gasChartRef.value) initMultiGasChart(gasChartRef.value);
+    
+    // 首次加载
+    await loadStats();
+    await loadTrends();
+    
+    // 设立 3 秒高频动态轮询，形成数字孪生实感
+    timer = setInterval(async () => {
+        await loadStats();
+        await loadTrends();
+    }, 3000);
 
     const handleResize = () => charts.forEach(c => c.resize());
     window.addEventListener('resize', handleResize);
 });
 
 onUnmounted(() => {
+    if (timer) clearInterval(timer);
     window.removeEventListener('resize', () => charts.forEach(c => c.resize()));
     charts.forEach(c => c.dispose());
 });
 
-function initMultiGasChart(el: HTMLElement) {
+function initMultiGasChart(el: HTMLElement, hours?: string[], nh3Data?: number[], co2Data?: number[]) {
     const hexToRgba = (hex: string, alpha: number) => {
         let r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     };
 
-    const myChart = echarts.init(el);
-    charts.push(myChart);
-    const hours = ['00:00', '06:00', '12:00', '18:00', '23:59'];
+    const myChart = echarts.getInstanceByDom(el) || echarts.init(el);
+    if (!charts.includes(myChart)) {
+        charts.push(myChart);
+    }
     
-    const nh3Data = [4.2, 3.5, 6.1, 8.2, 5.0];
-    const co2Data = [410, 390, 520, 680, 450];
+    const xAxisData = hours || ['00:00', '06:00', '12:00', '18:00', '23:59'];
+    const nh3 = nh3Data || [4.2, 3.5, 6.1, 8.2, 5.0];
+    const co2 = co2Data || [410, 390, 520, 680, 450];
 
     const option = {
         tooltip: { trigger: 'axis', backgroundColor: 'rgba(255,255,255,0.95)' },
@@ -48,7 +101,7 @@ function initMultiGasChart(el: HTMLElement) {
         xAxis: { 
             type: 'category', 
             boundaryGap: false, 
-            data: hours, 
+            data: xAxisData, 
             axisLine: { show: false }, 
             axisTick: { show: false },
             axisLabel: { fontSize: 10, fontWeight:'bold', color: '#064e3b', opacity: 0.6 }
@@ -72,7 +125,7 @@ function initMultiGasChart(el: HTMLElement) {
                 smooth: true, 
                 symbol: 'none',
                 lineStyle: { width: 3, color: '#059669' },
-                data: nh3Data,
+                data: nh3,
                 areaStyle: {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                         { offset: 0, color: hexToRgba('#059669', 0.2) },
@@ -87,7 +140,7 @@ function initMultiGasChart(el: HTMLElement) {
                 smooth: true, 
                 symbol: 'none',
                 lineStyle: { width: 2, color: '#10b981', type: 'dashed' },
-                data: co2Data,
+                data: co2,
                 areaStyle: {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
                         { offset: 0, color: hexToRgba('#10b981', 0.1) },

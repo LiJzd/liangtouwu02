@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 掌上明猪 AI 异构 Kafka 通信与 SSE 异步推送控制器
  */
 @Slf4j
-@RestController
+// @RestController
 @RequestMapping("/v1/ai/stream")
 public class AiKafkaController {
 

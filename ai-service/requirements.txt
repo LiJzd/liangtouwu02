@@ -1,65 +1,38 @@
-# FastAPI 核心框架
-fastapi==0.135.1
-uvicorn[standard]==0.40.0
-
-# 数据校验与配置管理
-pydantic==2.12.5
-pydantic-settings==2.13.1
-
-# 环境变量管理
-python-dotenv==1.0.1
-
-# 异步 HTTP 客户端
-httpx==0.28.1
-
-# 日志增强
-loguru==0.7.2
-rich==13.9.4
-
-# YOLO 视觉推理
-ultralytics==8.3.70
-opencv-python==4.11.0.86
-torch==2.6.0
-torchvision==0.21.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.20.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+httpx>=0.24.0
+loguru>=0.7.0
+rich>=13.0.0
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+torch>=2.0.0
+torchvision>=0.15.0
 Pillow>=10.0.0
 requests>=2.31.0
-python-multipart>=0.0.12
-
-# 数据库支持
-sqlalchemy[asyncio]==2.0.38
-aiosqlite==0.21.0
-aiomysql==0.2.0
-pymysql==1.1.1
-
-# 数值引擎依赖
+python-multipart>=0.0.9
+sqlalchemy[asyncio]>=2.0.0
+aiosqlite>=0.19.0
+aiomysql>=0.2.0
+pymysql>=1.1.0
 numpy>=1.24.0
 pandas>=2.0.0
-scipy>=1.11.0
-
-# LLM 调用（由兼容层统一管理）
-openai==2.31.0
-langchain==1.2.15
-langchain-openai==1.1.12
-langchain-core==1.2.28
-langchain-community==0.4.1
-
-# 腾讯 QQ Bot SDK
-qq-botpy==1.1.0
-
-# 阿里云 DashScope SDK
-dashscope==1.25.9
-
-# 核心重构与检索依赖
-langgraph==0.2.60
-pymilvus==2.5.4
-aiokafka==0.12.0
-rank-bm25==0.2.2
-sqlparse==0.5.3
+scipy>=1.8.0
+openai>=1.0.0
+langchain>=0.1.0
+langchain-openai>=0.1.0
+langchain-core>=0.1.0
+langchain-community>=0.0.1
+qq-botpy>=1.1.0
+dashscope>=1.15.0
+langgraph>=0.1.0
+pymilvus>=2.3.0
+aiokafka>=0.10.0
+rank-bm25>=0.2.2
+sqlparse>=0.4.4
 langchain-chroma>=0.1.0
-
-# 测试工具
 pytest>=8.0.0
 hypothesis>=6.0.0
-
-# 串口通信 (ESP32 硬件控制)
-pyserial==3.5
+pyserial>=3.5

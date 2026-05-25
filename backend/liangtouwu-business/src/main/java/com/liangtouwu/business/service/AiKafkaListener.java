@@ -17,7 +17,7 @@ import java.io.IOException;
  * 通过 SSE 推流至对应前端 client 会话，并做优雅容错退出。
  */
 @Slf4j
-@Service
+// @Service
 public class AiKafkaListener {
 
     private final ObjectMapper objectMapper;

@@ -9,7 +9,7 @@ import org.springframework.kafka.config.TopicBuilder;
 /**
  * Kafka 基础与 Topic 初始化配置类
  */
-@Configuration
+// @Configuration
 public class KafkaConfig {
 
     @Value("${ai.kafka.tasks-topic:pig-farm-tasks}")

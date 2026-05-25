@@ -401,6 +401,31 @@ export const apiService = {
         return mockResponse(MOCK_DASHBOARD);
     },
 
+    /** 设备云控：获取所有设备状态列表 */
+    getDevices: async (): Promise<ApiResponse<any[]>> => {
+        if (USE_REAL_API) {
+            const res = await http.get('/devices');
+            return res.data;
+        }
+        await delay(300);
+        return mockResponse([
+            { id: 'fan-1', name: '01栋主风扇', type: 'fan', state: 1, value: 65 },
+            { id: 'light-1', name: '保育舍照明', type: 'light', state: 0, value: 0 },
+            { id: 'temp-1', name: '恒温空调系统', type: 'temp', state: 1, value: 24 },
+            { id: 'watering-1', name: '自动供水水阀', type: 'watering', state: 1, value: 35 }
+        ]);
+    },
+
+    /** 设备云控：下发控制指令 */
+    controlDevice: async (id: string, state: number, value?: number): Promise<ApiResponse<void>> => {
+        if (USE_REAL_API) {
+            const res = await http.post('/devices/control', { id, state, value });
+            return res.data;
+        }
+        await delay(200);
+        return mockResponse(undefined);
+    },
+
     /** 设备管理：获取所有摄像头及流地址 */
     getCameras: async () => {
         if (USE_REAL_API) {

@@ -55,4 +55,14 @@ public class EnvironmentTrend {
      * 单位：百分比 (%)。
      */
     private BigDecimal humidity;
+
+    /**
+     * 氨气浓度 (ppm)
+     */
+    private BigDecimal nh3;
+
+    /**
+     * 二氧化碳浓度 (ppm)
+     */
+    private BigDecimal co2;
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
+import { apiService } from '../api';
 
 // 喂食系统状态
 const feedingStatus = ref({
@@ -29,6 +30,36 @@ const devices = ref([
     { id: 'camera-ptz', name: '云台摄像机', type: 'camera', state: true, value: null, icon: 'videocam' },
 ]);
 
+const loadDevices = async () => {
+    try {
+        const res = await apiService.getDevices();
+        if (res && res.code === 200 && Array.isArray(res.data)) {
+            const list = res.data;
+            list.forEach(d => {
+                const dev = devices.value.find(x => x.id === d.id);
+                if (dev) {
+                    dev.state = d.state === 1;
+                    if (d.value !== null && d.value !== undefined) {
+                        dev.value = d.value;
+                    }
+                }
+                
+                if (d.id === 'watering-1') {
+                    wateringStatus.value.active = d.state === 1;
+                    wateringStatus.value.pressure = d.state === 1 ? (d.value ? d.value / 100.0 : 0.35) : 0;
+                    wateringStatus.value.flowRate = d.state === 1 ? 1.2 : 0;
+                }
+            });
+        }
+    } catch (e) {
+        console.error("加载远程控制设备状态失败:", e);
+    }
+};
+
+onMounted(() => {
+    loadDevices();
+});
+
 function toggleFeeding() {
     feedingStatus.value.active = !feedingStatus.value.active;
     if (feedingStatus.value.active) {
@@ -48,10 +79,32 @@ function toggleFeeding() {
     }
 }
 
-function toggleDevice(id: string) {
-    const device = devices.value.find(d => d.id === id);
-    if (device) device.state = !device.state;
+async function toggleWatering() {
+    wateringStatus.value.active = !wateringStatus.value.active;
+    wateringStatus.value.flowRate = wateringStatus.value.active ? 1.2 : 0;
+    wateringStatus.value.pressure = wateringStatus.value.active ? 0.35 : 0;
+    
+    try {
+        await apiService.controlDevice('watering-1', wateringStatus.value.active ? 1 : 0, 35);
+        console.log("[RemoteControl] Water valve control synchronized: ", wateringStatus.value.active);
+    } catch (e) {
+        console.error("同步给水系统指令失败:", e);
+    }
 }
+
+async function toggleDevice(id: string) {
+    const device = devices.value.find(d => d.id === id);
+    if (device) {
+        device.state = !device.state;
+        try {
+            await apiService.controlDevice(device.id, device.state ? 1 : 0, device.value);
+            console.log("[RemoteControl] Device toggle synchronized: ", device);
+        } catch (e) {
+            console.error("同步设备控制指令失败:", e);
+        }
+    }
+}
+
 </script>
 
 <template>
@@ -171,7 +224,7 @@ function toggleDevice(id: string) {
               <div>
                 <div class="flex justify-between items-center mb-4">
                   <label class="text-[10px] font-bold text-emerald-900 uppercase tracking-widest">供水控制开关</label>
-                  <div @click="wateringStatus.active = !wateringStatus.active" :class="`w-10 h-5 rounded-full relative cursor-pointer transition-colors duration-300 ${wateringStatus.active ? 'bg-secondary' : 'bg-slate-300'}`">
+                  <div @click="toggleWatering" :class="`w-10 h-5 rounded-full relative cursor-pointer transition-colors duration-300 ${wateringStatus.active ? 'bg-secondary' : 'bg-slate-300'}`">
                     <div :class="`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform duration-300 ${wateringStatus.active ? 'translate-x-5' : ''}`"></div>
                   </div>
                 </div>

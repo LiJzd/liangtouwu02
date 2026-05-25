@@ -2,6 +2,7 @@
 -- 目的：扩充数据库规模，解决“全群 2 头”的问题，展示真实比例的猪场监控数据。
 
 USE liangtowwu;
+SET NAMES utf8mb4;
 
 -- 预先清理可能重复的测试编号 (可选，根据实际需要执行)
 -- DELETE FROM pig WHERE id LIKE 'PIG%';
@@ -34,7 +35,7 @@ BEGIN
     DECLARE i INT DEFAULT 21;
     DECLARE score_val INT;
     DECLARE temp_val DECIMAL(10,2);
-    DECLARE issue_val VARCHAR(255);
+    DECLARE issue_val VARCHAR(255) CHARACTER SET utf8mb4;
     
     WHILE i <= 100 DO
         -- 模拟约 10% 的异常比例
