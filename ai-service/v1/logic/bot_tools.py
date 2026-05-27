@@ -359,65 +359,66 @@ async def tool_get_pig_info_by_id(arg: str) -> str:
 @tool(name="query_pig_disease_rag", description="查询生猪病症数字化知识库，根据症状描述返回可能的疾病、诊断建议和治疗方案")
 async def tool_query_pig_disease_rag(arg: str) -> str:
     """
-    查询两头乌猪病症向量库
+    查询两头乌猪病症及养殖科学知识库（包含生长曲线、饲养地方标准等）
     
     参数:
-        symptoms: 症状描述（如：呕吐、拉稀、咳嗽、发烧等）
+        symptoms: 症状描述或需要检索的问题（如：发烧、咳嗽、生长曲线拐点、保种方案等）
     
     返回:
-        相关疾病信息、诊断建议和治疗方案
+        相关病症/养殖科学专业段落与治疗、预防、科学方案
     """
     data = _parse_args(arg)
     
-    # 提取症状描述
+    # 提取查询条件
     symptoms = None
     if isinstance(data, dict):
-        symptoms = data.get("symptoms") or data.get("_raw")
-    else:
-        symptoms = str(arg).strip()
+        symptoms = data.get("symptoms") or data.get("query") or data.get("_raw")
     
     if not symptoms:
-        return "用法: 调用 query_pig_disease_rag symptoms=症状描述"
+        symptoms = str(arg).strip()
+    
+    # 清理可能残留的 JSON 格式前缀后缀
+    if isinstance(symptoms, str):
+        symptoms = symptoms.strip("'\"")
+        if symptoms.startswith("{") and "symptoms" in symptoms:
+            try:
+                sub = json.loads(symptoms)
+                symptoms = sub.get("symptoms") or symptoms
+            except Exception:
+                pass
+            
+    if not symptoms:
+        return "用法: 调用 query_pig_disease_rag symptoms=症状描述或检索问题"
     
     try:
-        # TODO: 这里应该调用实际的向量库查询
-        # 目前返回模拟数据，你需要实现真实的 RAG 查询逻辑
+        from liangtouwu_knowledge_rag import query_liangtouwu_knowledge
         
-        # 示例：使用 ChromaDB 或其他向量数据库查询
-        # from pig_rag.pig_disease_rag import query_disease_knowledge
-        # result = query_disease_knowledge(symptoms)
+        # 执行真实检索（本地 TF-IDF 或在线 ChromaDB）
+        matches = query_liangtouwu_knowledge(symptoms, top_n=3)
         
-        # 临时返回示例数据
-        mock_result = {
+        if not matches:
+            return "知识库中未检索到与该问题直接相关的记录。"
+            
+        # 组装返回，供多智能体决策使用
+        results_list = []
+        for idx, match in enumerate(matches):
+            results_list.append({
+                "index": idx + 1,
+                "text": match["text"],
+                "score": match["score"],
+                "metadata": match["metadata"]
+            })
+            
+        final_result = {
             "query": symptoms,
-            "relevant_diseases": [
-                {
-                    "disease_name": "急性胃肠炎",
-                    "symptoms": ["呕吐", "腹泻", "食欲不振", "精神萎靡"],
-                    "causes": ["饲料变质", "饮水不洁", "应激反应"],
-                    "treatment": "停食12-24小时，提供清洁饮水，口服补液盐，必要时注射抗生素",
-                    "prevention": "保证饲料新鲜，饮水清洁，避免突然换料",
-                    "severity": "中等",
-                    "similarity": 0.85
-                },
-                {
-                    "disease_name": "传染性胃肠炎",
-                    "symptoms": ["严重呕吐", "水样腹泻", "脱水", "体温升高"],
-                    "causes": ["病毒感染", "传染性强"],
-                    "treatment": "隔离病猪，补液防脱水，抗病毒治疗，对症支持",
-                    "prevention": "疫苗接种，严格消毒，隔离病猪",
-                    "severity": "严重",
-                    "similarity": 0.72
-                }
-            ],
-            "general_advice": "建议立即隔离病猪，观察症状变化，如症状加重请及时联系兽医"
+            "matched_knowledge_chunks": results_list,
+            "advice": "以上是由两头乌数字化知识库 RAG 模块自动匹配的权威地方标准与科研段落，请依据此资料给出针对性的科学诊疗或饲养方案。"
         }
-        
-        return json.dumps(mock_result, ensure_ascii=False, indent=2)
+        return json.dumps(final_result, ensure_ascii=False, indent=2)
         
     except Exception as e:
         return json.dumps({
-            "error": "查询病症知识库失败",
+            "error": "调用两头乌专属知识库检索失败",
             "message": str(e)
         }, ensure_ascii=False)
 

@@ -208,15 +208,97 @@ LIANGTOUWU_KNOWLEDGE_CHUNKS: List[str] = [
 ]
 
 # ============================================================
+# 零依赖本地高精度 TF-IDF 检索引擎（离线降级方案）
+# ============================================================
+import re
+import math
+
+class LocalKWRAGMatcher:
+    def __init__(self, chunks: List[str]):
+        self.chunks = chunks
+        self.vocab = set()
+        self.idf = {}
+        self.doc_tfs = []
+        self._build_index()
+
+    def _tokenize(self, text: str) -> List[str]:
+        words = re.findall(r'[\u4e00-\u9fa5]+|[a-zA-Z0-9]+', text.lower())
+        bigrams = []
+        for word in words:
+            if len(word) > 1 and re.match(r'^[\u4e00-\u9fa5]+$', word):
+                for i in range(len(word) - 1):
+                    bigrams.append(word[i:i+2])
+        return words + bigrams
+
+    def _build_index(self):
+        doc_word_counts = []
+        for chunk in self.chunks:
+            tokens = self._tokenize(chunk)
+            counts = {}
+            for t in tokens:
+                counts[t] = counts.get(t, 0) + 1
+            doc_word_counts.append(counts)
+            self.vocab.update(counts.keys())
+
+        N = len(self.chunks)
+        for term in self.vocab:
+            df = sum(1 for counts in doc_word_counts if term in counts)
+            self.idf[term] = math.log((N - df + 0.5) / (df + 0.5) + 1.0) + 1.0
+
+        for counts in doc_word_counts:
+            tf_idf = {}
+            doc_len = sum(counts.values()) or 1
+            for term, freq in counts.items():
+                tf = freq / doc_len
+                tf_idf[term] = tf * self.idf.get(term, 1.0)
+            self.doc_tfs.append(tf_idf)
+
+    def search(self, query: str, top_n: int = 3) -> List[Dict[str, Any]]:
+        query_tokens = self._tokenize(query)
+        scores = []
+        for i, doc_tf in enumerate(self.doc_tfs):
+            score = 0.0
+            for token in query_tokens:
+                if token in doc_tf:
+                    score += doc_tf[token] * self.idf.get(token, 1.0)
+            scores.append((score, i))
+
+        scores.sort(key=lambda x: x[0], reverse=True)
+
+        results = []
+        for score, idx in scores[:top_n]:
+            chunk_text = self.chunks[idx]
+            title_start = chunk_text.find("【")
+            title_end = chunk_text.find("】")
+            category = "通用"
+            if title_start != -1 and title_end != -1:
+                category = chunk_text[title_start+1 : title_end]
+
+            results.append({
+                "text": chunk_text,
+                "score": round(1.0 / (1.0 + score), 4),
+                "metadata": {
+                    "chunk_id": idx,
+                    "category": category,
+                    "breed": "两头乌",
+                    "source": "local_offline_rag"
+                }
+            })
+        return results
+
+_local_matcher = None
+
+# ============================================================
 # 模块一：向量库物理构建与加载
 # ============================================================
 
-def init_liangtouwu_knowledge_db(force_rebuild: bool = False) -> Chroma:
+def init_liangtouwu_knowledge_db(force_rebuild: bool = False) -> Optional[Chroma]:
     """
     初始化或重建金华两头乌专属知识库本地 ChromaDB。
     """
     if not DASHSCOPE_API_KEY:
-         raise ValueError("初始化两头乌知识库失败：未检测到 DASHSCOPE_API_KEY 配置。")
+         print("[RAG-Liangtouwu] 未检测到 DASHSCOPE_API_KEY，系统将自动激活零依赖本地高精度离线检索引擎！")
+         return None
 
     embeddings = DashScopeEmbeddings(
         model=EMBEDDING_MODEL,
@@ -274,7 +356,7 @@ def init_liangtouwu_knowledge_db(force_rebuild: bool = False) -> Chroma:
 
 _vectorstore: Optional[Chroma] = None
 
-def _get_vectorstore() -> Chroma:
+def _get_vectorstore() -> Optional[Chroma]:
     """懒加载获取全局 Chroma 实例"""
     global _vectorstore
     if _vectorstore is None:
@@ -287,9 +369,19 @@ def query_liangtouwu_knowledge(query_text: str, top_n: int = 3) -> List[Dict[str
     语义检索金华两头乌专属知识库。
     
     返回：
-    List[Dict[str, Any]]: 包含相似度匹配的文本切片内容及相似度得分（Chroma 返回的是 L2 距离得分，越小越相似）。
+    List[Dict[str, Any]]: 包含相似度匹配的文本切片内容及相似度得分。
     """
+    global _local_matcher
+    if not DASHSCOPE_API_KEY:
+        if _local_matcher is None:
+            _local_matcher = LocalKWRAGMatcher(LIANGTOUWU_KNOWLEDGE_CHUNKS)
+        return _local_matcher.search(query_text, top_n=top_n)
+
     db = _get_vectorstore()
+    if db is None:
+        if _local_matcher is None:
+            _local_matcher = LocalKWRAGMatcher(LIANGTOUWU_KNOWLEDGE_CHUNKS)
+        return _local_matcher.search(query_text, top_n=top_n)
     
     # similarity_search_with_score 返回 List[Tuple[Document, float]]
     results = db.similarity_search_with_score(query=query_text, k=top_n)
