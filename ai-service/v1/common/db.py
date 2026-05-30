@@ -29,7 +29,7 @@ def _build_mysql_url() -> str:
 # - pool_recycle: 连接回收周期，防止长连接失效。
 _engine = create_async_engine(
     _build_mysql_url(),
-    pool_pre_ping=True,
+    pool_pre_ping=False,
     pool_recycle=3600,
 )
 

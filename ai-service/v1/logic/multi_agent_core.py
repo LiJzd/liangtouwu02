@@ -261,8 +261,8 @@ class SupervisorAgent:
     def __init__(self):
         settings = get_settings()
         self.api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
-        self.model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
-        self.omni_model = getattr(settings, "dashscope_omni_model", "qwen3.5-flash")
+        self.model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
+        self.omni_model = getattr(settings, "dashscope_omni_model", "qwen-vl-max")
 
     async def route(self, user_input: str, has_image: bool = False, has_audio: bool = False, client_id: str = "default") -> str:
         """
@@ -346,8 +346,8 @@ class WorkerAgent(ABC):
         self.tools = tools
         settings = get_settings()
         self.api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
-        self.model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
-        self.omni_model = getattr(settings, "dashscope_omni_model", "qwen3.5-flash")
+        self.model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
+        self.omni_model = getattr(settings, "dashscope_omni_model", "qwen-vl-max")
 
     @abstractmethod
     def get_tools(self) -> List[LCTool]: pass

@@ -20,6 +20,11 @@ const wateringStatus = ref({
     pressure: 0.35, // MPa
     dailyUsage: 42.8, // m³
     flowRate: 1.2, // L/min
+    history: [
+        { time: '07:30', action: '管道冲洗稳压', status: '就绪' },
+        { time: '10:15', action: '二栋保育舍补水', status: '完成' },
+        { time: '15:45', action: '三栋分娩舍补水', status: '完成' },
+    ]
 });
 
 // 设备控制列表
@@ -109,14 +114,14 @@ async function toggleDevice(id: string) {
 
 <template>
   <div class="pb-12 min-h-screen">
-    <!-- Hero Header Section -->
-    <section class="relative w-full h-[180px] flex items-center justify-center overflow-hidden border-b border-emerald-200 bg-emerald-200/30">
+    <!-- Hero Header Section (Streamlined) -->
+    <section class="relative w-full h-[120px] flex items-center justify-between overflow-hidden border-b border-emerald-200 bg-emerald-200/30 px-8">
       <div class="absolute inset-0 z-0 flex justify-center items-center opacity-30 pointer-events-none">
         <div class="w-[600px] h-[600px] bg-emerald-300 blur-[100px] rounded-full"></div>
       </div>
-      <div class="relative z-10 flex flex-col items-center px-4 text-center mt-6">
-        <span class="text-primary font-headline font-bold tracking-[0.4em] text-[10px] mb-2 uppercase">REMOTE CONTROL</span>
-        <h1 class="text-3xl md:text-4xl font-headline font-bold text-emerald-950 tracking-tight">远程控制与自动化中心</h1>
+      <div class="relative z-10 flex flex-col items-start mt-2">
+        <span class="text-primary font-headline font-bold tracking-[0.4em] text-[10px] uppercase">REMOTE CONTROL</span>
+        <h1 class="text-2xl md:text-3xl font-headline font-bold text-emerald-950 tracking-tight">远程控制与自动化中心</h1>
       </div>
     </section>
 
@@ -224,22 +229,23 @@ async function toggleDevice(id: string) {
               <div>
                 <div class="flex justify-between items-center mb-4">
                   <label class="text-[10px] font-bold text-emerald-900 uppercase tracking-widest">供水控制开关</label>
-                  <div @click="toggleWatering" :class="`w-10 h-5 rounded-full relative cursor-pointer transition-colors duration-300 ${wateringStatus.active ? 'bg-secondary' : 'bg-slate-300'}`">
-                    <div :class="`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform duration-300 ${wateringStatus.active ? 'translate-x-5' : ''}`"></div>
+                  <div @click="toggleWatering" :class="`w-14 h-7 rounded-full relative cursor-pointer transition-colors duration-300 flex items-center px-1 ${wateringStatus.active ? 'bg-secondary' : 'bg-slate-300'}`">
+                    <div :class="`w-5 h-5 bg-white rounded-full transition-transform duration-300 transform ${wateringStatus.active ? 'translate-x-7' : 'translate-x-0'}`"></div>
                   </div>
                 </div>
                 <p class="text-xs text-on-surface-variant leading-relaxed">主供水管道当前处于 <span :class="wateringStatus.active ? 'text-secondary font-bold' : 'text-slate-500 font-bold'">{{ wateringStatus.active ? '开启' : '关闭' }}</span> 状态。自动稳压系统已就绪。</p>
               </div>
 
-              <div class="pt-6 border-t border-emerald-100">
-                <div class="flex justify-between items-end mb-2">
-                    <span class="text-[10px] font-bold text-emerald-900 uppercase">今日累积消耗情况</span>
-                    <span class="text-xs font-bold text-emerald-950 font-headline">{{ wateringStatus.dailyUsage }} m³</span>
+              <div class="pt-4 border-t border-emerald-100/50">
+                <div class="flex justify-between items-end mb-3">
+                    <span class="text-[10px] font-bold text-emerald-900 uppercase tracking-widest">今日水流日志 // WATER STREAM LOGS</span>
                 </div>
-                <div class="h-10 w-full mt-1">
-                   <svg class="w-full h-full opacity-60 chart-line" viewBox="0 0 100 30" preserveAspectRatio="none">
-                     <path d="M 0,25 Q 15,20 30,22 T 50,15 T 75,18 T 100,20" fill="none" stroke="#059669" stroke-linecap="round" stroke-width="2.5"></path>
-                   </svg>
+                <div class="space-y-2 mb-4 bg-emerald-50/30 p-3 rounded-lg border border-emerald-100/30">
+                  <div v-for="(wlog, wi) in wateringStatus.history" :key="wi" class="flex justify-between items-center text-[10px] font-mono">
+                    <span class="text-emerald-900/60">{{ wlog.time }}</span>
+                    <span class="text-emerald-950 font-bold truncate max-w-[120px]">{{ wlog.action }}</span>
+                    <span class="text-emerald-700 font-bold bg-emerald-100/60 px-1.5 rounded">{{ wlog.status }}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -265,8 +271,8 @@ async function toggleDevice(id: string) {
               <div :class="`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${device.state ? 'bg-emerald-100 text-secondary' : 'bg-slate-100 text-slate-400'}`">
                 <span class="material-symbols-outlined text-2xl" :class="device.state && device.type === 'fan' ? 'animate-spin-slow' : ''">{{ device.icon }}</span>
               </div>
-              <div @click="toggleDevice(device.id)" :class="`w-10 h-5 rounded-full relative cursor-pointer transition-colors duration-300 ${device.state ? 'bg-secondary' : 'bg-slate-300'}`">
-                <div :class="`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform duration-300 ${device.state ? 'translate-x-5' : ''}`"></div>
+              <div @click="toggleDevice(device.id)" :class="`w-14 h-7 rounded-full relative cursor-pointer transition-colors duration-300 flex items-center px-1 ${device.state ? 'bg-secondary' : 'bg-slate-300'}`">
+                <div :class="`w-5 h-5 bg-white rounded-full transition-transform duration-300 transform ${device.state ? 'translate-x-7' : 'translate-x-0'}`"></div>
               </div>
             </div>
 

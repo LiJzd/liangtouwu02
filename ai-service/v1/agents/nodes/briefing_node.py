@@ -97,7 +97,7 @@ async def briefing_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
-    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
+    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
 
     system_prompt = (
         "你是一个专业的养殖运营专家。请根据提供的数据生成日报。标题格式为：# {日期} 两头乌智能养殖日报\n"

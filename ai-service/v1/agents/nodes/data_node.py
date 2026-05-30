@@ -102,7 +102,7 @@ async def _execute_text_to_sql_flow(query_str: str, client_id: str) -> str:
     """Text-to-SQL 复杂流程"""
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
-    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
+    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
     
     # 1. 构造 Text-to-SQL Prompt 并调用模型生成 SQL
     schema_prompt = (

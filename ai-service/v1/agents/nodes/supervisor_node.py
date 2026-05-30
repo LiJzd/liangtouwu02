@@ -84,7 +84,7 @@ async def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     # 大模型调用配置准备
     settings = get_settings()
     api_key = os.environ.get("DASHSCOPE_API_KEY") or settings.dashscope_api_key
-    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
+    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
     
     system_prompt = (
         "你是一个智能养殖场管理系统的路由调度员。请根据用户输入，将其分类到以下最合适的专家通道：\n"

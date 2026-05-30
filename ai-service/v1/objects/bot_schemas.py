@@ -21,6 +21,8 @@ class BotHandleResponse(BaseModel):
     """
     机器人交互响应协议。
     """
+    reply: str = Field("", description="机器人文本回复内容")
+    image: Optional[str] = Field(None, description="机器人图片回复内容（Base64）")
 
 
 class OutboxItem(BaseModel):

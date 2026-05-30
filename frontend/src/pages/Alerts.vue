@@ -204,28 +204,53 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="space-y-6 flex flex-col h-full overflow-hidden">
-    <!-- 顶部状态卡片 -->
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-5">
-      <div class="bg-white/95 p-5 rounded-2xl border border-emerald-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+  <div class="pb-12 min-h-screen flex flex-col">
+    <!-- Hero Header Section (Streamlined) -->
+    <section class="relative w-full h-[120px] flex items-center justify-between overflow-hidden border-b border-emerald-200 bg-emerald-200/30 px-8 shrink-0">
+      <div class="absolute inset-0 z-0 flex justify-center items-center opacity-30 pointer-events-none">
+        <div class="w-[600px] h-[600px] bg-emerald-300 blur-[100px] rounded-full"></div>
+      </div>
+      <div class="relative z-10 flex flex-col items-start mt-2">
+        <span class="text-primary font-headline font-bold tracking-[0.4em] text-[10px] uppercase">ALARM CENTER</span>
+        <h1 class="text-2xl md:text-3xl font-headline font-bold text-emerald-950 tracking-tight">安全预警控制中心</h1>
+      </div>
+    </section>
+
+    <!-- Content wrap -->
+    <div class="max-w-7xl mx-auto w-full space-y-8 px-6 pt-8 flex-1 flex flex-col">
+      <!-- 顶部状态卡片 -->
+      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div class="bg-white/95 p-5 rounded-2xl border border-emerald-200 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition duration-300 h-28 relative overflow-hidden">
         <span class="text-[10px] font-bold text-emerald-900/60 uppercase tracking-widest">全部告警</span>
-        <span class="text-4xl font-headline font-bold text-emerald-950 mt-2">{{ summaryStats.total }}</span>
+        <span class="text-3xl font-headline font-bold text-emerald-950 mt-2">{{ summaryStats.total }} <span class="text-xs font-semibold text-emerald-900/40">条</span></span>
       </div>
-      <div class="bg-red-50/90 p-5 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+      <div class="bg-white/95 p-5 rounded-2xl border border-red-200 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition duration-300 h-28 relative overflow-hidden">
+        <div class="absolute -right-2 -bottom-2 opacity-5 pointer-events-none">
+          <span class="material-symbols-outlined text-[60px] text-red-950">warning</span>
+        </div>
         <span class="text-[10px] font-bold text-red-600 uppercase tracking-widest">紧急</span>
-        <span class="text-4xl font-headline font-bold text-red-700 mt-2">{{ summaryStats.critical }}</span>
+        <span class="text-3xl font-headline font-bold text-red-700 mt-2">{{ summaryStats.critical }} <span class="text-xs font-semibold text-red-900/40">条</span></span>
       </div>
-      <div class="bg-orange-50/90 p-5 rounded-2xl border border-orange-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+      <div class="bg-white/95 p-5 rounded-2xl border border-orange-200 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition duration-300 h-28 relative overflow-hidden">
+        <div class="absolute -right-2 -bottom-2 opacity-5 pointer-events-none">
+          <span class="material-symbols-outlined text-[60px] text-orange-950">error</span>
+        </div>
         <span class="text-[10px] font-bold text-orange-600 uppercase tracking-widest">高风险</span>
-        <span class="text-4xl font-headline font-bold text-orange-700 mt-2">{{ summaryStats.high }}</span>
+        <span class="text-3xl font-headline font-bold text-orange-700 mt-2">{{ summaryStats.high }} <span class="text-xs font-semibold text-orange-900/40">条</span></span>
       </div>
-      <div class="bg-amber-50/90 p-5 rounded-2xl border border-amber-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+      <div class="bg-white/95 p-5 rounded-2xl border border-amber-200 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition duration-300 h-28 relative overflow-hidden">
+        <div class="absolute -right-2 -bottom-2 opacity-5 pointer-events-none">
+          <span class="material-symbols-outlined text-[60px] text-amber-950">info</span>
+        </div>
         <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">中风险</span>
-        <span class="text-4xl font-headline font-bold text-amber-700 mt-2">{{ summaryStats.medium }}</span>
+        <span class="text-3xl font-headline font-bold text-amber-700 mt-2">{{ summaryStats.medium }} <span class="text-xs font-semibold text-amber-900/40">条</span></span>
       </div>
-      <div class="bg-blue-50/90 p-5 rounded-2xl border border-blue-200 shadow-sm flex flex-col justify-between hover:-translate-y-1 transition duration-300">
+      <div class="bg-white/95 p-5 rounded-2xl border border-blue-200 shadow-sm flex flex-col justify-between hover:-translate-y-0.5 transition duration-300 h-28 relative overflow-hidden">
+        <div class="absolute -right-2 -bottom-2 opacity-5 pointer-events-none">
+          <span class="material-symbols-outlined text-[60px] text-blue-950">chat_bubble</span>
+        </div>
         <span class="text-[10px] font-bold text-blue-600 uppercase tracking-widest">低风险</span>
-        <span class="text-4xl font-headline font-bold text-blue-800 mt-2">{{ summaryStats.low }}</span>
+        <span class="text-3xl font-headline font-bold text-blue-800 mt-2">{{ summaryStats.low }} <span class="text-xs font-semibold text-blue-900/40">条</span></span>
       </div>
     </div>
 
@@ -331,12 +356,12 @@ onBeforeUnmount(() => {
           </thead>
           <tbody class="divide-y divide-emerald-100/50">
             <tr v-if="loading && filteredAlerts.length === 0">
-              <td colspan="7" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
+              <td colspan="8" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
                 LOADING_ALERTS
               </td>
             </tr>
             <tr v-else-if="filteredAlerts.length === 0">
-              <td colspan="7" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
+              <td colspan="8" class="p-16 text-center text-emerald-900/40 text-xs font-bold uppercase tracking-widest">
                 NO_ALERT_MATCHED
               </td>
             </tr>
@@ -377,7 +402,7 @@ onBeforeUnmount(() => {
                 <td class="px-6 py-4 text-right">
                   <button 
                     @click.stop="onDeleteAlert(alert.id)"
-                    class="p-2 text-emerald-900/40 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-40 group-hover:opacity-100"
+                    class="p-2 text-emerald-900/40 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-70 group-hover:opacity-100"
                     title="删除告警"
                   >
                     <span class="material-symbols-outlined text-[18px]">delete</span>
@@ -385,7 +410,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="alert.message" class="bg-surface-bright/50">
-                <td colspan="7" class="px-6 py-4 border-t border-emerald-50 text-xs text-emerald-900/80 leading-relaxed font-inter">
+                <td colspan="8" class="px-6 py-4 border-t border-emerald-50 text-xs text-emerald-900/80 leading-relaxed font-inter">
                   <div class="flex items-start">
                     <span class="material-symbols-outlined text-[16px] text-emerald-900/40 mr-2 shrink-0">info</span>
                     <span class="flex-1">{{ alert.message }}</span>
@@ -407,4 +432,5 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </div>
+</div>
 </template>

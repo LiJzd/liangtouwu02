@@ -50,6 +50,7 @@ class BotClient(botpy.Client):
             reply_func=reply_func,
         )
 
+    async def on_c2c_message_create(self, message: C2CMessage):
         # 看看消息里有没有图片或者语音（得支持老乡发图问诊和发语音啊）
         image_urls = []
         voice_urls = []

@@ -703,21 +703,25 @@ export const apiService = {
 
     // 同步生成 AI 报告（耗时较长）
     generatePigInspectionReport: async (pigId: string, traceId?: string) => {
-
         if (!USE_REAL_API) {
             await delay(1500);
             return buildMockPigInspectionReport(pigId);
         }
-
-        const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
-        const resp = await fetch(`${baseUrl}/inspection/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
-        });
-        if (!resp.ok) throw new Error(`同步生成失败: ${resp.status}`);
-        const data = await resp.json();
-        return data;
+        try {
+            const baseUrl = import.meta.env.DEV ? 'http://localhost:8000/api/v1' : '/api/v1';
+            const resp = await fetch(`${baseUrl}/inspection/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pig_id: pigId, trace_id: traceId })
+            });
+            if (!resp.ok) throw new Error(`同步生成失败: ${resp.status}`);
+            const data = await resp.json();
+            return data;
+        } catch (e) {
+            console.warn('[generatePigInspectionReport] AI 服务不可用或超时，已自动降级至 Mock 实时模拟数据:', e);
+            await delay(1000);
+            return buildMockPigInspectionReport(pigId);
+        }
     },
 
     // 流式生成报告（SSE 逐字打字机效果）

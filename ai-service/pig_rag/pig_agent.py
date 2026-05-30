@@ -30,7 +30,7 @@ if not DASHSCOPE_API_KEY:
     except ImportError:
         pass
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_MODEL = "qwen3.5-flash"
+LLM_MODEL = "qwen-plus"
 
 
 # 工具函数：把各种乱七八糟的数据转成数字，防止程序报错

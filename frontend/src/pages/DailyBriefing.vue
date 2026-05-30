@@ -206,65 +206,57 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col space-y-6">
-    <!-- 顶部标题区 -->
-    <div class="flex items-center justify-between bg-white/95 backdrop-blur-md p-6 rounded-2xl border border-emerald-200 shadow-sm relative overflow-hidden group">
-      <!-- 动态氛围背景 -->
-      <div class="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+  <div class="pb-12 min-h-screen flex flex-col">
+    <!-- Hero Header Section (Streamlined) -->
+    <section class="relative w-full h-[120px] flex items-center justify-between overflow-hidden border-b border-emerald-200 bg-emerald-200/30 px-8 shrink-0">
+      <div class="absolute inset-0 z-0 flex justify-center items-center opacity-30 pointer-events-none">
+        <div class="w-[600px] h-[600px] bg-emerald-300 blur-[100px] rounded-full"></div>
+      </div>
       
-      <div class="flex items-center space-x-6 relative">
-        <div class="w-14 h-14 bg-gradient-to-br from-emerald-500 to-secondary rounded-xl flex items-center justify-center shadow-lg shadow-secondary/20 relative">
-           <div v-if="isStreaming" class="absolute inset-0 bg-white/20 animate-ping rounded-xl"></div>
-           <span class="material-symbols-outlined text-white text-3xl">description</span>
-        </div>
-        <div>
-          <h2 class="text-2xl font-headline font-bold text-emerald-950 tracking-tight">每日诊断简报</h2>
-          <p class="text-xs text-emerald-900/60 font-inter font-bold uppercase tracking-[0.2em] mt-1 flex items-center">
-            Daily AI Reasoning Engine
-            <span v-if="isStreaming" class="ml-3 flex space-x-1">
-                <span class="w-1 h-1 bg-emerald-400 rounded-full animate-bounce" style="animation-delay: 0s"></span>
-                <span class="w-1 h-1 bg-emerald-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></span>
-                <span class="w-1 h-1 bg-emerald-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></span>
-            </span>
-          </p>
-        </div>
+      <div class="relative z-10 flex flex-col items-start mt-2">
+        <span class="text-primary font-headline font-bold tracking-[0.4em] text-[10px] uppercase">DAILY BRIEFING</span>
+        <h1 class="text-2xl md:text-3xl font-headline font-bold text-emerald-950 tracking-tight flex items-center gap-2">
+          每日诊断简报中心
+        </h1>
       </div>
 
-      <div class="flex items-center space-x-3 relative">
+      <div class="relative z-10 flex items-center gap-3 mt-2">
         <!-- AI 实时状态 -->
-        <div v-if="isStreaming || streamStatus" class="flex items-center space-x-2 px-4 py-2 bg-emerald-950/5 border border-emerald-200/50 rounded-xl transition-all duration-500">
-          <span v-if="isStreaming" class="w-2 h-2 rounded-full bg-secondary animate-pulse shadow-[0_0_8px_secondary]"></span>
-          <span class="text-[11px] font-bold text-emerald-800 uppercase tracking-widest">{{ streamStatus }}</span>
+        <div v-if="isStreaming || streamStatus" class="flex items-center space-x-2 px-4 py-1.5 bg-white/90 backdrop-blur-sm rounded-full border border-emerald-200 shadow-sm transition-all duration-500">
+          <span v-if="isStreaming" class="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse shadow-[0_0_8px_secondary] pulse-indicator"></span>
+          <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-widest">{{ streamStatus }}</span>
         </div>
         
-        <div v-if="streamError" class="flex items-center space-x-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl">
-           <span class="material-symbols-outlined text-red-500 text-base">error_outline</span>
-           <span class="text-[11px] font-bold text-red-600">{{ streamError }}</span>
+        <div v-if="streamError" class="flex items-center space-x-2 px-4 py-1.5 bg-red-50 border border-red-200 rounded-full">
+           <span class="material-symbols-outlined text-red-500 text-xs">error_outline</span>
+           <span class="text-[10px] font-bold text-red-600">{{ streamError }}</span>
         </div>
 
         <!-- 功能按钮 -->
         <button
           v-if="isStreaming && !isSkipping"
           @click="skipAnimation"
-          class="flex items-center space-x-2 px-5 py-3 bg-amber-500 text-white rounded-xl text-[12px] font-bold uppercase tracking-widest hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20"
+          class="flex items-center space-x-1.5 px-4 py-1.5 bg-amber-500 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-amber-600 transition-all shadow-md shadow-amber-500/20"
         >
-          <span class="material-symbols-outlined text-lg">fast_forward</span>
+          <span class="material-symbols-outlined text-xs">fast_forward</span>
           <span>加速加载</span>
         </button>
 
         <button
           @click="triggerNew"
           :disabled="triggering"
-          class="flex items-center space-x-2 px-6 py-3 bg-emerald-950 text-white rounded-xl text-[13px] font-bold uppercase tracking-widest hover:-translate-y-0.5 hover:shadow-xl transition-all disabled:opacity-50"
+          class="flex items-center space-x-1.5 px-4 py-1.5 bg-emerald-950 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:-translate-y-0.5 hover:shadow-md transition-all disabled:opacity-50"
         >
-          <span :class="cn('material-symbols-outlined text-lg', triggering && 'animate-spin')">smart_toy</span>
-          <span>{{ triggering ? 'AI 正在执行扫描...' : '启动智能诊断' }}</span>
+          <span :class="cn('material-symbols-outlined text-xs', triggering && 'animate-spin')">smart_toy</span>
+          <span>{{ triggering ? '正在扫描...' : '启动智能诊断' }}</span>
         </button>
       </div>
-    </div>
+    </section>
 
-    <!-- 主体内容区 -->
-    <div class="flex-1 flex space-x-6 min-h-0">
+    <!-- Content wrap -->
+    <div class="max-w-7xl mx-auto w-full space-y-8 px-6 pt-8 flex-1 flex flex-col min-h-0">
+      <!-- 主体内容区 -->
+      <div class="flex-1 flex space-x-6 min-h-0">
       <!-- 历史列表 -->
       <div class="w-72 flex flex-col bg-white/80 backdrop-blur-md rounded-2xl border border-emerald-200 shadow-sm min-h-0 overflow-hidden shrink-0">
         <div class="p-4 border-b border-emerald-100 flex items-center justify-between bg-emerald-50/50">
@@ -295,8 +287,8 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 中心展示区 -->
-      <div class="flex-1 flex space-x-6 min-h-0 overflow-hidden">
+      <!-- 中心展示区 (引入 relative 容器以支持绝对悬浮抽屉) -->
+      <div class="flex-1 flex space-x-6 min-h-0 overflow-hidden relative">
           <!-- 简报正文 -->
           <div class="flex-1 bg-white/95 backdrop-blur-md rounded-2xl border border-emerald-200 shadow-sm flex flex-col min-h-0 overflow-hidden group">
             <div class="p-5 border-b border-emerald-100 flex items-center justify-between bg-emerald-50/30">
@@ -313,7 +305,7 @@ onMounted(() => {
                </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto p-10 prose prose-emerald max-w-none prose-sm custom-scrollbar relative">
+            <div class="flex-1 overflow-y-auto p-10 prose prose-emerald max-w-none prose-base custom-scrollbar relative">
                <!-- [New] AI 思维状态灯 -->
                <div v-if="isStreaming" class="flex items-center space-x-2 py-2 px-3 bg-emerald-50 border border-emerald-100 rounded-lg absolute top-4 right-4 z-10 animate-pulse shadow-sm">
                   <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
@@ -331,11 +323,11 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 思维链推理台 -->
+          <!-- 思维链推理台 (重构为绝对悬浮滑出抽屉 z-20，绝不挤压或缩窄中间正文内容) -->
           <div 
              :class="cn(
-                'w-80 flex flex-col bg-[#0a1a15] rounded-2xl border border-emerald-900/30 shadow-2xl transition-all duration-700 overflow-hidden shrink-0 transform',
-                isStreaming || displayTraceLogs.length > 0 ? 'translate-x-0' : 'translate-x-[110%] opacity-0 pointer-events-none'
+                'absolute right-0 top-0 bottom-0 w-80 flex flex-col bg-[#0a1a15]/95 backdrop-blur-md rounded-2xl border border-emerald-900/30 shadow-2xl transition-all duration-300 overflow-hidden shrink-0 transform z-20',
+                isStreaming || displayTraceLogs.length > 0 ? 'translate-x-0 opacity-100' : 'translate-x-[110%] opacity-0 pointer-events-none'
              )"
           >
             <div class="p-4 border-b border-emerald-900/50 flex items-center justify-between bg-emerald-950/50">
@@ -343,11 +335,14 @@ onMounted(() => {
                     <span :class="cn('material-symbols-outlined text-sm', isStreaming ? 'text-emerald-400 animate-spin-slow' : 'text-emerald-800')">cognition</span>
                     <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.2em]">Live Reasoning Trace</span>
                 </div>
-                <div class="flex space-x-1">
-                    <div class="w-2 h-2 rounded-full bg-red-400/20"></div>
-                    <div class="w-2 h-2 rounded-full bg-amber-400/20"></div>
-                    <div class="w-2 h-2 rounded-full bg-emerald-400/20"></div>
-                </div>
+                <!-- 精细化关闭控制按钮 -->
+                <button 
+                  @click="displayTraceLogs = []" 
+                  class="text-emerald-500/60 hover:text-red-400 transition-colors flex items-center justify-center p-1 hover:bg-white/5 rounded-lg"
+                  title="收起面板"
+                >
+                  <span class="material-symbols-outlined text-sm">close</span>
+                </button>
             </div>
 
             <div class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar-dark scroll-smooth" id="trace-container">
@@ -380,6 +375,7 @@ onMounted(() => {
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <style scoped>

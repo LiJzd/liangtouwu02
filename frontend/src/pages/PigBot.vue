@@ -408,11 +408,26 @@ const stopRecording = () => {
 </script>
 
 <template>
-  <div class="h-[calc(100vh-8rem)] min-h-[600px] w-full max-w-[1400px] mx-auto flex gap-10 pb-4 relative z-10">
-    <!-- 🌟 手机模拟器视图 🌟 -->
+  <div class="pb-12 min-h-screen flex flex-col">
+    <!-- Hero Header Section (Streamlined) -->
+    <section class="relative w-full h-[120px] flex items-center justify-between overflow-hidden border-b border-emerald-200 bg-emerald-200/30 px-8 shrink-0">
+      <div class="absolute inset-0 z-0 flex justify-center items-center opacity-30 pointer-events-none">
+        <div class="w-[600px] h-[600px] bg-emerald-300 blur-[100px] rounded-full"></div>
+      </div>
+      <div class="relative z-10 flex flex-col items-start mt-2">
+        <span class="text-primary font-headline font-bold tracking-[0.4em] text-[10px] uppercase">PIGBOT ASSISTANT</span>
+        <h1 class="text-2xl md:text-3xl font-headline font-bold text-emerald-950 tracking-tight flex items-center gap-2">
+          数字专家智能中枢
+        </h1>
+      </div>
+    </section>
+
+    <!-- Content wrap -->
+    <div class="max-w-[1400px] mx-auto w-full px-6 pt-8 flex-1 flex flex-row gap-10 h-[calc(100vh-14rem)] min-h-[500px] pb-12 relative z-10">
+      <!-- 🌟 手机模拟器视图 🌟 -->
     <div class="flex-1 flex justify-center items-center relative py-2">
       <!-- 手机外壳 -->
-      <div class="relative w-[420px] md:w-[460px] h-[780px] md:h-[850px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
+      <div class="relative w-[420px] md:w-[460px] h-full max-h-[680px] md:max-h-[760px] rounded-[3rem] border-[12px] border-emerald-950/95 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.4)] bg-emerald-50 flex flex-col overflow-hidden shrink-0 ring-[2px] ring-white/40 ring-offset-4 ring-offset-emerald-100 group">
         <!-- 侧边物理按键特效 -->
         <div class="absolute -left-[14px] top-32 w-1 h-8 rounded-l-md bg-emerald-900"></div>
         <div class="absolute -left-[14px] top-48 w-1 h-12 rounded-l-md bg-emerald-900"></div>
@@ -611,7 +626,7 @@ const stopRecording = () => {
     </div>
 
     <!-- 🚀 右侧思维链展示面板 (大屏可见) 🚀 -->
-    <div v-if="showTracePanel" class="hidden xl:flex w-[550px] bg-white/40 backdrop-blur-3xl rounded-[2rem] shadow-xl border border-white/20 flex-col overflow-hidden self-start mt-6 h-[780px] md:h-[850px] animate-in slide-in-from-right duration-500">
+    <div v-if="showTracePanel" class="hidden xl:flex w-[550px] bg-white/40 backdrop-blur-3xl rounded-[2rem] shadow-xl border border-white/20 flex-col overflow-hidden self-center h-full max-h-[680px] md:max-h-[760px] animate-in slide-in-from-right duration-500">
       <header class="p-5 border-b border-emerald-100/50 flex items-center justify-between bg-white/60">
         <div class="flex items-center gap-2">
           <div class="w-2.5 h-2.5 rounded-full bg-secondary animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
@@ -768,6 +783,7 @@ const stopRecording = () => {
       </footer>
     </div>
   </div>
+</div>
 </template>
 
 <style scoped>

@@ -269,7 +269,7 @@ def _get_llm_config() -> Tuple[str, str, str]:
         or settings.dashscope_base_url
         or "https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
-    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen3.5-flash"
+    model = os.environ.get("DASHSCOPE_MODEL") or settings.dashscope_model or "qwen-plus"
     return api_key, base_url, model
 
 
